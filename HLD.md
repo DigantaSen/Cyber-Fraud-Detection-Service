@@ -24,12 +24,13 @@ flowchart LR
 
 ## 2. Architecture Principles
 *   **Cloud-Agnostic:** Containerized, open-source technologies (e.g., Kubernetes, Kafka, PostgreSQL) allow deployment across AWS, Azure, GCP, or on-premises data centers with minimal modifications.
-*   **Database-per-Service:** Each microservice completely owns its domain data. Direct database sharing is prohibited. Connection pooling (PgBouncer, asyncpg pool) prevents DB connection exhaustion under horizontal scaling.
+*   **Database-per-Service:** Each microservice completely owns its domain data. Direct database sharing is prohibited. In production, PgBouncer (transaction-mode connection pooler) sits in front of PostgreSQL to prevent DB connection exhaustion under horizontal scaling. For the hackathon demo, services connect directly to Postgres on port 5432.
 *   **CQRS & Event-Driven Architecture (EDA):** The platform separates write models (ACID transactions) from read models (search/dashboards). State changes emit domain events, which update downstream read projections asynchronously. All Kafka topics are provisioned with **12 partitions** to allow up to 12 consumer pods per consumer group without rebalancing overhead.
 *   **API-First & Contract Layer:** External APIs are versioned and strictly documented via OpenAPI specifications.
     *   **Production (Kubernetes):** Internal service-to-service communication uses **gRPC with strongly typed, versioned Protocol Buffers contracts** — lower latency, binary serialization, native streaming. Istio handles mTLS over gRPC automatically.
-    *   **Docker Compose (local/demo):** Internal communication uses **HTTP/1.1 via `httpx.AsyncClient`** with connection pools. This provides identical contract semantics with simpler debugging and no proto compilation step. The API contract files in `/docs/` define the interface; switching to gRPC in production requires only replacing the transport layer, not the business logic.
-*   **Stateless Horizontal Scaling:** All application services are stateless. All state is externalized to PostgreSQL (via PgBouncer), Redis Cluster, Neo4j, PostGIS, OpenSearch, or Kafka. Any service can be scaled to N replicas by adding pods — no session affinity or sticky routing required. Kafka consumer groups handle partition rebalancing automatically.
+    *   **Docker Compose (local/demo):** Internal communication uses **HTTP/1.1 via `httpx.AsyncClient`** with connection pools. This provides identical contract semantics with simpler debugging and no proto compilation step.
+*   **Stateless Horizontal Scaling:** All application services are stateless. All state is externalized to PostgreSQL, Redis, Neo4j, PostGIS, OpenSearch, or Kafka. Any service can be scaled to N replicas — Kafka consumer groups handle partition rebalancing automatically.
+*   **Secrets Management:** Services read configuration from environment variables (`.env`) for the hackathon demo. Production deployment uses HashiCorp Vault with Vault Agent sidecar injection.
 *   **Scalability Target:** 1M+ concurrent users, 5,000 RPS peak, 50,000 streaming events/second (SRS §10).
 
 ---
@@ -43,9 +44,18 @@ This component map illustrates the high-level flow of data across the distribute
 flowchart LR
     Citizen[Citizen App / Mobile Edge] --> API[API Gateway]
     Command[Command Center] --> API
+    Bank[Bank Portal] --> API
+    Telco[Telecom Portal] --> API
+    Gov[Gov Portal] --> API
     
     API --> BFF_Cit[Citizen BFF]
     API --> BFF_Inv[Investigator BFF]
+    API --> BFF_Bank[Bank BFF]
+    API --> BFF_Telco[Telecom BFF]
+    API --> BFF_Gov[Gov BFF]
+    API --> EventProc
+    API --> Search[Search Service]
+    API --> Auth[Identity Service]
     
     BFF_Cit --> Case[Case Service]
     BFF_Cit --> Bot[Conversational Bot]
@@ -55,20 +65,30 @@ flowchart LR
     BFF_Inv --> Ev
     BFF_Inv --> Search[Search Service]
     BFF_Inv --> Report[Reporting Service]
+    BFF_Inv --> Entity[Entity Graph Service]
+    
+    BFF_Bank --> EventProc[Event Processing]
+    BFF_Telco --> EventProc
+    BFF_Gov --> Report
+    BFF_Gov --> Notify[Notification Service]
     
     Case --> Orch[Inference Orchestrator]
     Bot --> Orch
+    EventProc --> Orch
+    Orch --> Entity
     Orch <-->|REST / gRPC| AI_Ext[AI Platform]
     
     Case --> Kafka{{Kafka}}
     Ev --> Kafka
     Report --> Kafka
     Orch --> Kafka
+    EventProc --> Kafka
     
     Kafka --> Entity[Entity Graph Service]
     Kafka --> Search
     Kafka --> Notify[Notification Service]
     Kafka --> Geo[Geospatial Intelligence Service]
+    Kafka --> Audit[Audit Service]
     BFF_Inv --> Geo
 ```
 
@@ -80,11 +100,19 @@ flowchart TD
     %% External Actors
     Client_Citizen([Citizen App / Web])
     Client_LEO([Command Center / Investigators])
+    Client_Bank([Bank Official Portal])
+    Client_Telco([Telecom Admin Portal])
+    Client_Gov([Gov / MHA Portal])
     
     subgraph Control Plane
         Gateway[Kong API Gateway]
         Router_Cit{Citizen API Route}
         Router_Inv{Investigator API Route}
+        Router_Bank{Bank API Route}
+        Router_Telco{Telecom API Route}
+        Router_Gov{Gov API Route}
+        Router_Event{Event Webhook Route}
+        Router_Search{Search API Route}
         Svc_Auth[Identity Service]
         Svc_Config[Configuration Service]
         Svc_Audit[Audit Service]
@@ -94,6 +122,9 @@ flowchart TD
     subgraph Data Plane
         BFF_Cit[Citizen BFF]
         BFF_Inv[Investigator BFF]
+        BFF_Bank[Bank BFF]
+        BFF_Telco[Telecom BFF]
+        BFF_Gov[Gov BFF]
         Svc_Case[Case Management Service]
         Svc_Inference[Inference Orchestrator]
         Svc_Event[Event Processing Service]
@@ -112,45 +143,62 @@ flowchart TD
 
     Client_Citizen --> Gateway
     Client_LEO --> Gateway
+    Client_Bank --> Gateway
+    Client_Telco --> Gateway
+    Client_Gov --> Gateway
     
     Gateway --> Router_Cit
     Gateway --> Router_Inv
+    Gateway --> Router_Bank
+    Gateway --> Router_Telco
+    Gateway --> Router_Gov
+    Gateway --> Router_Event
+    Gateway --> Router_Search
     Gateway --> Svc_Auth
     
     Router_Cit --> BFF_Cit
     Router_Inv --> BFF_Inv
+    Router_Bank --> BFF_Bank
+    Router_Telco --> BFF_Telco
+    Router_Gov --> BFF_Gov
+    Router_Event --> Svc_Event
+    Router_Search --> Svc_Search
     
     BFF_Cit --> Svc_Case & Svc_Evidence & Svc_Bot
-    BFF_Inv --> Svc_Case & Svc_Evidence & Svc_Search & Svc_Report & Svc_Geo
+    BFF_Inv --> Svc_Case & Svc_Evidence & Svc_Search & Svc_Report & Svc_Geo & Svc_Entity
+    BFF_Bank --> Svc_Event
+    BFF_Telco --> Svc_Event
+    BFF_Gov --> Svc_Report & Svc_Notify
     
     %% Event Publishing
     Svc_Auth & Svc_Case & Svc_Inference & Svc_Evidence & Svc_Event & Svc_Report & Svc_Geo -.->|Publishes Events| Kafka
     
     %% Event Consumption
-    Kafka -.->|Consumes Events| Svc_Entity & Svc_Notify & Svc_Audit & Svc_Search & Svc_Report & Svc_Bot & Svc_Geo
+    Kafka -.->|Consumes Events| Svc_Entity & Svc_Notify & Svc_Audit & Svc_Search & Svc_Report & Svc_Geo
 ```
 
 ---
 
 ## 4. Core Services Definition
 
-The platform is decomposed into 14 core services. To bridge naturally into the Low-Level Design (LLD), the API contracts and event flows are summarized below.
+The platform is decomposed into **15 core services**. To bridge naturally into the Low-Level Design (LLD), the API contracts and event flows are summarized below.
 
 ### 4.1 Edge & Aggregation Layers
 1.  **API Gateway:**
     *   *Technology:* **Kong 3 (DB-less mode)**. Declarative YAML configuration in `/infra/kong/kong.yml` — no Kong database required.
-    *   *Responsibilities:* Edge proxy, JWT validation (RS256), rate limiting (IP + token), request ID generation, correlation ID injection, OpenTelemetry tracing plugin.
-    *   *Plugins active:* `jwt`, `rate-limiting`, `request-id`, `correlation-id`, `opentelemetry`, `response-ratelimiting`.
-2.  **Citizen / Investigator BFFs:**
-    *   *Responsibilities:* Aggregates microservice data for UI consumption. Owned by Surjit (Citizen BFF) and Nilkanta (Investigator BFF) respectively.
+    *   *Responsibilities:* Edge proxy, JWT validation (RS256), rate limiting (IP + token), correlation ID injection.
+    *   *Plugins active (hackathon):* `jwt`, `rate-limiting`, `correlation-id`, `response-ratelimiting`.
+    *   *Production extensions:* `request-id`, `opentelemetry` (traces routed via OTel Collector to Tempo).
+2.  **BFFs (Citizen, Investigator, Bank, Telecom, Gov):**
+    *   *Responsibilities:* Aggregates microservice data for UI consumption. Owned by Surjit (Citizen, Bank, Telecom) and Nilkanta (Investigator, Gov).
 
 ### 4.2 Control Plane Services
 3.  **Identity Service:**
     *   *Provides:* `Login`, `Verify MFA`, `Manage RBAC`
     *   *Publishes:* `User.Registered`, `User.LoginFailed`
 4.  **Configuration Service:**
-    *   *Responsibilities:* Feature flags, env profiles, fusion weight management. Integrates with Vault for secrets.
-    *   *Docker Compose implementation:* Redis keys (`fusion:weights`, `fusion:enabled_models`) serve this function directly — satisfying FR-14.4 (hot-reload without restart) without a separate service binary. Production Kubernetes deployment uses a dedicated Configuration Service backed by Vault and Redis.
+    *   *Responsibilities:* Feature flags, env profiles, fusion weight management.
+    *   *Hackathon implementation:* Redis keys (`fusion:weights`, `fusion:enabled_models`) serve this function directly — satisfying FR-14.4 (hot-reload without restart) without a separate service binary. Production Kubernetes deployment uses a dedicated Configuration Service backed by Vault and Redis.
 5.  **Audit Service:**
     *   *Responsibilities:* Immutable ledger.
     *   *Consumes:* `*.Created`, `*.Updated` (All state changes)
@@ -215,6 +263,8 @@ flowchart TD
         ReportD[Reporting Domain] --> ReportS[Reporting Service] --> ReportDB[(PostgreSQL 16)]
         BotD[Bot Domain] --> BotS[Conversational Bot Service] --> BotDB[(Redis 7)]
         GeoD[Geospatial Domain] --> GeoS[Geospatial Service] --> GeoDB[(PostGIS 3.4 — dedicated container)]
+        AuditD[Audit Domain] --> AuditS[Audit Service] --> AuditDB[(PostgreSQL 16)]
+        OrchD[Inference Domain] --> OrchS[Inference Orchestrator] --> OrchDB[(PostgreSQL 16)]
     end
 ```
 
@@ -239,15 +289,14 @@ flowchart LR
 ## 6. Event Streaming Architecture
 
 ### 6.1 Kafka Architecture Flow
-All events are validated against the **Confluent Schema Registry** (JSON Schema format) before publishing. This enforces backward and forward compatibility — a schema-incompatible event payload is rejected at the producer before it reaches the broker.
+All events are published as plain JSON. The platform uses Kafka KRaft mode (no Zookeeper) with **12 partitions per topic** for parallel consumer scaling. In production, a Confluent Schema Registry enforces backward and forward JSON Schema compatibility at the producer before reaching the broker.
 
-Kafka runs in **KRaft mode** (Kafka 3.6+, `confluentinc/confluent-local:7.6`). No Zookeeper. KRaft is the production-recommended configuration as of Kafka 3.4+.
+Kafka runs in **KRaft mode** (Kafka 3.6+, `bitnamilegacy/kafka:3.6`). No Zookeeper.
 
 ```mermaid
 flowchart LR
-    Producer[Service Producer] --> Schema[Schema Registry]
-    Schema --> Partition[Topic Partition]
-    Partition --> Broker[Kafka Broker Cluster]
+    Producer[Service Producer] --> Partition[Topic Partition]
+    Partition --> Broker[Kafka Broker]
     Broker -->|Consumes| CG[Consumer Group]
     
     CG -->|Success| Commit[Commit Offset]
@@ -255,6 +304,8 @@ flowchart LR
     
     RetryTopic -->|Max Retries Exceeded| DLQ[Dead Letter Queue DLQ]
 ```
+
+> **Hackathon:** Producers publish plain JSON directly to Kafka (no Schema Registry validation). In production, a Confluent Schema Registry step sits between producer and partition, enforcing backward/forward JSON Schema compatibility.
 
 ### 6.2 Standardized Event Naming
 Naming consistency is strictly enforced across all domain boundaries using the `Noun.PastTenseVerb` convention:
@@ -351,6 +402,8 @@ The Inference Orchestrator dispatches parallel invocations to each applicable AI
 ```mermaid
 flowchart TD
     Trigger[Investigation Trigger] --> Orch[Inference Orchestrator]
+    Orch -->|Fetch 2-Hop Anchor| Graph[Entity Graph Service]
+    Graph -->|Return Sub-Graph| Orch
     Orch -->|Parallel| Vision[Vision AI Endpoint]
     Orch -->|Parallel| NLP_Audio[NLP / Audio AI Endpoint]
     Orch -->|Parallel| Graph_AI[Graph AI Endpoint]
@@ -393,7 +446,7 @@ sequenceDiagram
 
     Citizen->>API: POST /api/v1/complaints (JWT)
     API->>BFF: Route Request
-    BFF->>Case: Create Case (gRPC)
+    BFF->>Case: Create Case (HTTP/REST)
     Case->>Outbox: Persist Transaction + Event
     Outbox-->>Case: Success
     Case-->>BFF: Case ID
@@ -408,12 +461,15 @@ sequenceDiagram
 sequenceDiagram
     participant Case as Case Service
     participant Orch as AI Orchestrator
+    participant Graph as Entity Graph Service
     participant Queue as Internal Durable Queue
     participant AI as AI Platform
     participant Kafka as Kafka Bus
     
     Case->>Orch: Request AI Analysis (Async)
-    Orch->>Queue: Push Payload (Not Kafka)
+    Orch->>Graph: GET /graph/linkages (Fetch Anchor Sub-Graph)
+    Graph-->>Orch: Return 2-Hop JSON Neighborhood
+    Orch->>Queue: Push Unified Payload (Not Kafka)
     Queue->>AI: Trigger Inference
     AI-->>Orch: Return Risk Score
     Orch->>Orch: Persist Prediction Details
@@ -429,7 +485,7 @@ sequenceDiagram
 *   **Caching:** Implemented via the **Cache-Aside Pattern** using Redis to reduce DB load. Eviction policies: TTL-based for sessions/OTPs; LRU/LFU for cached read models.
 *   **Logging & Tracing:** Structured JSON logs are emitted by all services. OpenTelemetry automatically propagates `trace_id` headers.
 *   **Rate Limiting:** Enforced globally at the API Gateway (IP + token-based per FR-2.5), and locally at the service mesh layer for inter-service RPCs.
-*   **Feature Flags & Secrets:** Managed centrally by the Configuration Service integrating with Vault.
+*   **Feature Flags & Secrets:** Configuration Service manages feature flags and fusion weights via Redis keys (hot-reload, FR-14.4). Secrets are read from `.env` in the hackathon demo; production uses HashiCorp Vault with Vault Agent sidecar injection.
 
 ---
 
@@ -442,6 +498,9 @@ flowchart TD
         Ingest[Event Processing]
         AI_Orch[Inference Orchestrator]
         Geo_Svc[Geospatial Intelligence Service]
+        Report[Reporting Service]
+        Auth[Identity Service]
+        Bot[Conversational Bot Service]
     end
 
     subgraph External Systems
@@ -452,8 +511,10 @@ flowchart TD
         
         Telco[Telecom / ISP APIs] --> Ingest
         Banks[Banking Core APIs] <--> Ingest
-        Gov[Government NCRB APIs] <--> Platform
-        Mapping[Geospatial / Mapping APIs] --> Geo_Svc
+        Gov[Government NCRB APIs] <--> Report
+        GovIdP[Government KYC/IdP APIs] --> Auth
+        Geo_Svc --> Mapping[Geospatial / Mapping APIs]
+        WhatsApp[WhatsApp / Omnichannel APIs] <--> Bot
         
         AI_Orch <--> AI_Ext[External AI Platform]
     end
@@ -469,17 +530,15 @@ All services emit **structured JSON logs** via `loguru` (Python). The OpenTeleme
 
 ```mermaid
 flowchart LR
-    Services[Microservices] -->|Traces| OTel[OpenTelemetry Collector]
-    Services -->|Metrics| Prom[Prometheus]
-    Services -->|Logs| Promtail[Promtail]
-    
-    OTel --> Tempo[Tempo]
-    Promtail --> Loki[Loki]
+    Services[Microservices] -->|OTLP traces direct| Tempo[Tempo]
+    Services -->|Metrics /metrics| Prom[Prometheus]
+    Services -->|Structured JSON logs| Loki[Loki]
     
     Tempo & Prom & Loki --> Grafana[Grafana Dashboards]
     Grafana --> Alert[SLI / SLO Alerts]
-    Alert --> Pager[PagerDuty]
 ```
+
+> **Hackathon simplification:** Services send OTLP traces directly to Tempo (port 4317) and push logs directly to Loki's HTTP API. In production, an OpenTelemetry Collector routes traces/logs from all services to the appropriate backends, and Promtail scrapes container logs. Both production components remain in the architecture diagram for judges.
 
 ---
 
@@ -501,7 +560,7 @@ The platform is designed to run on a container orchestration system (Kubernetes)
 
 *Note: mTLS handshake overhead is factored into the 1.5s API SLA. `cert-manager` is a critical-path operational dependency that automates certificate rotation for all Istio-managed services.*
 
-**Local Docker Compose equivalent:** Kong handles TLS termination at the gateway layer. `mkcert` generates locally-trusted TLS certificates for inter-service HTTPS. This provides the same security boundary as Istio mTLS for development and demo purposes.
+**Local Docker Compose equivalent:** Kong handles TLS termination at the gateway layer. All inter-service communication is plain HTTP within the isolated Docker bridge network (`172.20.0.0/16`). Production Kubernetes uses Istio mTLS for full zero-trust enforcement.
 
 ```mermaid
 flowchart TD
@@ -523,27 +582,39 @@ flowchart TD
             Pod_Cit[Citizen BFF Deployment]
             Pod_Case[Case Service Deployment]
             Pod_Bot[Conversational Bot Deployment]
+            Pod_Auth[Identity Service Deployment]
+            Pod_Evidence[Evidence Service Deployment]
         end
         
         subgraph Worker Node 2
             Pod_Inv[Investigator BFF Deployment]
+            Pod_Gov[Gov BFF Deployment]
             Pod_Orch[Inference Orch Deployment]
             Pod_Report[Reporting Service Deployment]
+            Pod_Entity[Entity Graph Service Deployment]
+            Pod_Geo[Geospatial Service Deployment]
         end
         
         subgraph Worker Node 3
             Pod_Search[Search Service Deployment]
             Pod_Event[Event Service Deployment]
+            Pod_Bank[Bank BFF Deployment]
+            Pod_Telco[Telecom BFF Deployment]
+            Pod_Audit[Audit Service Deployment]
+            Pod_Notify[Notification Service Deployment]
         end
         
-        Mesh --> Pod_Cit & Pod_Inv & Pod_Search & Pod_Case & Pod_Orch & Pod_Event & Pod_Bot & Pod_Report
+        Mesh --> Pod_Cit & Pod_Inv & Pod_Search & Pod_Case & Pod_Orch & Pod_Event & Pod_Bot & Pod_Report & Pod_Gov & Pod_Bank & Pod_Telco & Pod_Auth & Pod_Evidence & Pod_Entity & Pod_Geo & Pod_Audit & Pod_Notify
     end
 
     subgraph Data Layer [Isolated Subnet]
         Postgres[(PostgreSQL StatefulSet)]
+        PostGIS[(PostGIS StatefulSet)]
         Neo4j[(Neo4j StatefulSet)]
         OpenSearch[(OpenSearch StatefulSet)]
         Kafka{{Kafka StatefulSet}}
+        Redis[(Redis StatefulSet)]
+        MinIO[(MinIO / S3 StatefulSet)]
     end
 
     Worker Node 1 & Worker Node 2 & Worker Node 3 --> Data Layer

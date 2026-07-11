@@ -10,6 +10,8 @@
 
 **Design principle:** Diganta owns the two hardest cross-cutting concerns (infra + platform core) so Surjit and Nilkanta build against a solid, contract-driven foundation. Surjit and Nilkanta own full vertical slices so they never block each other. Kushal is fully decoupled until integration day; the only hard dependency is that all ML API stubs match the contract Diganta defines on Day 1.
 
+> **Infrastructure scope (hackathon):** All production-only services (PgBouncer, Vault, ClamAV, Schema Registry, Promtail, OTel Collector) have been intentionally removed from the running stack. They remain in the architecture diagram and slides as production-deployment components. Services connect directly to Postgres on port 5432, read secrets from `.env`, send traces directly to Tempo, and publish plain JSON to Kafka.
+
 ---
 
 ## Tech Stack (Production Grade — Frozen at Day 1 Sign-off)
@@ -19,24 +21,21 @@
 | **Backend framework (all services)** | **FastAPI (Python 3.12)** | Unified across all 4 members. Async-native, OpenAPI auto-generated, best ML ecosystem fit. |
 | **ML services (Kushal)** | **FastAPI (Python 3.12)** | Same as system services — zero integration friction. |
 | **Frontend** | **React 18 + Vite** | Fast build, React Query for data fetching, Zustand for state. |
-| **Primary DB** | **PostgreSQL 16** | ACID, JSONB, `tsvector` full-text search, triggers for outbox automation. |
+| **Primary DB** | **PostgreSQL 16** | ACID, JSONB, tsvector full-text search. Services connect directly on port 5432. |
 | **Geospatial DB** | **PostGIS 3.4** (separate container, `postgis/postgis:16-3.4`) | ST_Within, ST_MakeEnvelope, ST_AsGeoJSON for hotspot queries. |
 | **Graph DB** | **Neo4j 5 Community** (APOC plugin) | Cypher queries, `shortestPath()`, Louvain community detection via APOC. |
-| **Cache / sessions** | **Redis 7 Cluster** | Session store, OTP cache, JWT denylist, live fusion weight config keys. Cluster mode for 1M+ sessions. |
-| **Connection pooling** | **PgBouncer 1.22** (transaction-mode) | Sits in front of PostgreSQL. Limits actual DB connections to 100 regardless of service replicas. Critical at 1M+ users. |
-| **Search / read model** | **OpenSearch 2** | CQRS read model for case search + faceted filtering. Kafka consumer indexes Case/Evidence events. 3-shard, 1-replica index config for horizontal growth. |
+| **Cache / sessions** | **Redis 7** | Session store, OTP cache, JWT denylist, live fusion weight config keys. |
+| **Search / read model** | **OpenSearch 2** | CQRS read model for case search + faceted filtering. Kafka consumer indexes Case/Evidence events. |
 | **Object storage** | **MinIO** (S3-compatible) | Presigned URLs for direct browser upload. Swap to S3 in cloud deploy. |
-| **Event bus** | **Kafka 3.6 KRaft mode** | No Zookeeper. `confluentinc/confluent-local:7.6` image. **12 partitions per topic** for parallel consumer scaling to 12 pods. |
-| **Schema Registry** | **Confluent Schema Registry 7.6** | JSON Schema validation for all Kafka events. Enforces backward/forward compatibility at publish time. |
-| **API gateway** | **Kong 3 (DB-less mode)** | Declarative YAML config — no Kong database needed. Plugins: JWT validation, rate-limit, request-id, correlation-id, OpenTelemetry. **Rate limit:** 1000 req/min per token, 100 req/min per IP for unauthenticated routes. |
-| **Service mesh** | **Istio 1.21 (sidecar injection)** | mTLS between all services in Kubernetes. Docker Compose local dev uses Kong + TLS certs via `mkcert` as equivalent. |
+| **Event bus** | **Kafka 3.6 KRaft mode** | No Zookeeper. `bitnamilegacy/kafka:3.6`. **12 partitions per topic** for parallel consumer scaling. |
+| **API gateway** | **Kong 3 (DB-less mode)** | Declarative YAML config. Plugins: JWT validation, rate-limit, correlation-id. |
 | **Observability — metrics** | **Prometheus 2 + Grafana 10** | `prometheus-fastapi-instrumentator` auto-instruments all FastAPI services. |
-| **Observability — logs** | **Loki + Promtail (Grafana stack)** | Structured JSON logs via `loguru` collected by Promtail, queried in Grafana. |
-| **Observability — traces** | **Tempo + OpenTelemetry Collector** | `opentelemetry-sdk` auto-instruments FastAPI. Traces viewable in Grafana (linked to logs via trace_id). |
-| **Secrets** | **HashiCorp Vault (dev mode locally, prod mode on deploy)** | All service secrets injected at startup via Vault Agent. `.env` only used for Vault address + role. |
-| **BFF layer** | **Thin FastAPI gateway per audience** | Citizen BFF (owned by Surjit) + Investigator BFF (owned by Nilkanta) aggregate downstream calls. Clients talk to one BFF, not individual microservices. |
+| **Observability — logs** | **Loki** | Structured JSON logs via `loguru`, pushed directly from services to Loki HTTP API. |
+| **Observability — traces** | **Tempo 2.4** | `opentelemetry-sdk` auto-instruments FastAPI. Services send OTLP directly to Tempo:4317. |
+| **Secrets (hackathon)** | **`.env` file** | All service secrets from environment variables. Production deployment uses HashiCorp Vault. |
+| **BFF layer** | **Thin FastAPI gateway per audience** | Citizen BFF (Surjit) + Investigator BFF (Nilkanta) aggregate downstream calls. |
 
-> **Scalability contract:** All FastAPI services are **stateless** and scale horizontally. All state lives in PostgreSQL (via PgBouncer), Redis Cluster, Neo4j, PostGIS, OpenSearch, or Kafka. Adding pods never requires migration — only Kafka consumer group rebalancing, which Kafka handles automatically.
+> **Scalability contract:** All FastAPI services are **stateless** and scale horizontally. All state lives in PostgreSQL, Redis, Neo4j, PostGIS, OpenSearch, or Kafka. Adding pods never requires migration — only Kafka consumer group rebalancing, which Kafka handles automatically. *Production deployment adds PgBouncer for connection pooling and Redis Cluster for 1M+ session scale.*
 
 > **Why FastAPI for all services:** Single language across all 4 team members eliminates context-switching during T13 integration and T16 E2E debugging. Python's ML ecosystem (httpx, asyncio, SQLAlchemy 2, neo4j driver, asyncpg, minio-py) has first-class support for every data store in this stack. FastAPI generates OpenAPI specs automatically — those specs ARE the api-contract files in `/docs/`.
 
@@ -45,7 +44,7 @@
 ## 1. Complete Project Breakdown
 
 ### Phase A — Design & Foundation (Day 1, Diganta-led)
-**Module A1:** Monorepo, production docker-compose with all data stores (PostgreSQL + PgBouncer, PostGIS, Neo4j, Redis Cluster, Kafka KRaft + Schema Registry, MinIO, OpenSearch, Kong, Vault, Prometheus + Grafana + Loki + Tempo + OTel Collector), environment config, CI skeleton
+**Module A1:** Monorepo, hackathon docker-compose with all required data stores (PostgreSQL 16 direct on 5432, PostGIS, Neo4j, Redis, Kafka KRaft, MinIO, OpenSearch, Kong, Prometheus + Grafana + Loki + Tempo), environment config, CI skeleton. Production extensions (PgBouncer, Vault, ClamAV, Schema Registry, Promtail, OTel Collector) documented in architecture slides but not run locally.
 **Module A2:** API contracts for all 15 services (endpoint-by-endpoint spec), DB schemas (DDL-level for all stores), sequence diagrams for 6 core flows
 **Module A3:** All 4 members review and approve before any feature coding begins
 
@@ -83,26 +82,20 @@
 - **Purpose:** Give every member a fully production-equivalent local environment from Day 1. No simplified substitutes.
 - **Depends On:** Nothing. [CRITICAL PATH START]
 - **Deliverable:** `docker-compose.yml` with the following production-grade services:
-  - `postgres:16-alpine` — primary relational store. **Connection pooling via `pgbouncer` (transaction mode, max 100 PostgreSQL connections — absorbs horizontal service scaling without exhausting DB connection slots)**
-  - `pgbouncer:1.22` — connection pooler in front of PostgreSQL. Services connect to PgBouncer on port 5432; PgBouncer talks to Postgres on 5433. Config: `pool_mode=transaction`, `max_client_conn=1000`, `default_pool_size=100`.
-  - `postgis/postgis:16-3.4` — dedicated geospatial store (separate container, separate DB), `CREATE EXTENSION postgis` on init
+  - `postgres:16-alpine` — primary relational store. Services connect directly on port **5432**.
+  - `postgis/postgis:16-3.4` — dedicated geospatial store (separate container, separate DB)
   - `neo4j:5-community` with `NEO4JPLUGINS=apoc` — entity graph store
-  - `redis:7-alpine` — session cache, OTP, JWT denylist, fusion weight config. **In production Kubernetes: Redis Cluster (3 primary + 3 replica shards) handles 1M+ sessions without single-point memory limit.**
-  - `opensearch:2` + `opensearch-dashboards:2` — CQRS search read model, faceted case search. **Index config: 3 primary shards, 1 replica shard. Supports linear horizontal growth.**
-  - `confluentinc/confluent-local:7.6` — Kafka 3.6 in KRaft mode (no Zookeeper). **All topics provisioned with 12 partitions — allows up to 12 parallel consumer pods per consumer group.**
-  - `confluentinc/cp-schema-registry:7.6` — JSON Schema Registry, linked to Kafka
+  - `redis:7-alpine` — session cache, OTP, JWT denylist, fusion weight config.
+  - `opensearch:2` + `opensearch-dashboards:2` — CQRS search read model, faceted case search.
+  - `bitnamilegacy/kafka:3.6` — Kafka 3.6 in KRaft mode (no Zookeeper). **All topics provisioned with 12 partitions.**
   - `minio/minio` — S3-compatible object store with `mc` init container to create buckets
-  - `kong:3-alpine` in DB-less mode — API gateway with `kong.yml` declarative config
-  - `vault:1.16` in dev mode — secrets store, all service secrets read from Vault at startup
+  - `kong:3` in DB-less mode — API gateway with `kong.yml` declarative config
   - `prom/prometheus:v2.52` — metrics scrape from all FastAPI services
   - `grafana/grafana:10.4` — dashboards (pre-seeded data sources: Prometheus, Loki, Tempo)
-  - `grafana/loki:3.0` + `grafana/promtail:3.0` — log aggregation
-  - `grafana/tempo:2.4` — distributed tracing backend
-  - `otel/opentelemetry-collector-contrib:0.100.0` — receives OTLP from all services, routes to Tempo + Loki
-  - `mkcert` init container — generates local TLS certs for Kong HTTPS and inter-service mTLS simulation
-  - `clamav/clamav:1.3` — malware scanning for Evidence Service. `freshclam` runs on startup to update virus definitions. Evidence Service connects via TCP socket on port 3310.
+  - `grafana/loki:3.0` — log aggregation (services push logs directly via HTTP API)
+  - `grafana/tempo:2.4` — distributed tracing backend (services send OTLP directly on port 4317)
   - Health checks on all containers. Startup order enforced via `depends_on: condition: service_healthy`.
-  - Folder structure: `/backend/{auth,case,evidence,notification,reporting,geospatial,graph,bot,citizen-bff,investigator-bff,inference-orchestrator,audit,event-processing,search}`, `/frontend/{citizen,investigator}`, `/ml/{scam-nlp,counterfeit-cv,graph-analyzer,audio-analyzer,edge}`, `/infra/{docker,kong,vault,prometheus,grafana,loki,otel,pgbouncer}`, `/docs`. README with `make up` one-liner (Makefile wrapping compose commands).
+  - **Production-only (in slides, not running locally):** PgBouncer (connection pooling), Vault (secrets), ClamAV (malware scanning), Schema Registry (schema validation), Promtail (log shipping), OTel Collector (trace routing).
 - **Effort:** 7h | **Owner:** Diganta
 
 ### T2 — LLD: API Contracts (All 15+ Services)
@@ -118,13 +111,13 @@
 ### T3 — LLD: DB Schema (All Data Stores)
 - **Purpose:** DDL-precise enough that Surjit and Nilkanta write migrations without follow-up questions.
 - **Depends On:** T1, T2. **Unlocks:** T4, T5a, T6a, T8, T8c, T8d.
-- **Deliverable:** PostgreSQL DDL (User, Role, Session, Case, CaseTimeline, Evidence, EvidenceHash, Notification, MHAAlert, Prediction, FusedVerdict, OverrideRecord, Report, IntelligencePackage, AuditLog, Outbox). **Include `pg_bouncer` compatible DDL (no session-level variables, no advisory locks in hot paths).** Neo4j schema with property uniqueness constraints and indexes. PostGIS schema. Redis key conventions with TTL policies. **Kafka topic manifest: 12 partitions per topic, `replication.factor=3` (target prod), retention by topic type (Case topics: 7 days, Audit: 30 days, Prediction: 14 days).** OpenSearch index mappings: `case_index` (3 shards, 1 replica, dynamic=false, explicit types for all 20+ fields), `evidence_index`. ER diagram.
+- **Deliverable:** PostgreSQL DDL (User, Role, Session, Case, CaseTimeline, Evidence, EvidenceHash, Notification, MHAAlert, Prediction, FusedVerdict, OverrideRecord, Report, IntelligencePackage, AuditLog, Outbox). Neo4j schema with property uniqueness constraints and indexes. PostGIS schema. Redis key conventions with TTL policies. **Kafka topic manifest: 12 partitions per topic, `replication.factor=1` (single broker local), retention by topic type (Case topics: 7 days, Audit: 30 days, Prediction: 14 days).** OpenSearch index mappings: `case_index` (1 shard for local, dynamic=false, explicit types for **15 fields**: caseId, title, description, notes, status, riskTier, confidence, fusedScore, jurisdictionId, assignedInvestigator, reporterPhone, complaintLocation, reporterEntityName, createdAt, updatedAt), `evidence_index` (8 fields: evidenceId, caseId, fileName, mimeType, sha256, fileSize, uploadedBy, createdAt). ER diagram.
 - **Effort:** 4h | **Owner:** Diganta
 
 ### T3b — LLD: Sequence Diagrams (6 Core Flows)
 - **Purpose:** Remove who-calls-whom ambiguity before integration.
 - **Depends On:** T2, T3. **Unlocks:** T13, T13b, T13c, T15, T16.
-- **Deliverable:** (1) Citizen report -> multi-source ML fusion -> HITL gate -> case created. (2) Evidence upload -> hash verification -> intelligence package. (3) Telecom stream -> <300ms interdiction -> MHA alert. (4) Offline counterfeit scan -> sync -> conflict resolution. (5) Case created -> geospatial layer update -> dashboard push. (6) Investigator override -> immutable record -> audit trail.
+- **Deliverable:** (1) Citizen report -> case created -> multi-source ML fusion -> HITL gate. (2) Evidence upload -> hash verification -> intelligence package. (3) Telecom stream -> <300ms interdiction -> MHA alert. (4) Offline counterfeit scan -> sync -> conflict resolution. (5) Case created -> geospatial layer update -> dashboard push. (6) Investigator override -> immutable record -> audit trail.
 - **Effort:** 3h | **Owner:** Diganta
 
 ### T3c — Design Sign-off
@@ -137,13 +130,18 @@
 
 ### T4 — Auth / Identity Service
 - **Purpose:** User context needed by every feature. | **Depends On:** T3c. **Unlocks:** T4b, T5a, T6c.
-- **Deliverable:** POST /auth/login, /auth/register, /auth/refresh, /auth/mfa/verify. JWT (RS256), RBAC claims in token (role, orgId, jurisdictionId). JWT denylist in Redis. TOTP MFA via `pyotp`. Reads secrets from Vault via `hvac`.
+- **Deliverable:** POST /auth/login, /auth/register, /auth/refresh, /auth/mfa/verify. JWT (RS256), RBAC claims in token (role, orgId, jurisdictionId). JWT denylist in Redis. TOTP MFA via `pyotp`. Reads secrets from `.env` (hackathon) / Vault (production).
 - **Effort:** 4h | **Owner:** Surjit
 
 ### T4b — Citizen BFF
-- **Purpose:** Single entry point for the Citizen UI — aggregates Case Service + Bot + Orchestrator stub. Shields frontend from service topology changes. | **Depends On:** T4, T5a. **Unlocks:** T5c, T16.
-- **Deliverable:** FastAPI gateway service at `/api/v1/citizen/`. Proxies and aggregates: `POST /citizen/report` → Case Service + queues Orchestrator call. `POST /citizen/bot/message` → Bot Service. `GET /citizen/cases/:id` → Case Service + Prediction status. Injects `correlationId` and `X-User-Context` into every downstream call. Rate limit: 60 req/min per user (configured in Kong). **Stateless — scales independently from all downstream services.**
+- **Purpose:** Single entry point for the Citizen UI — aggregates Case Service + Bot + Orchestrator stub. Shields frontend from service topology changes. | **Depends On:** T4, T5a, T5b. **Unlocks:** T5c, T16.
+- **Deliverable:** FastAPI gateway service at `/api/v1/citizen/`. Proxies and aggregates: `POST /citizen/report` → Case Service (which triggers Orchestrator asynchronously). `POST /citizen/bot/message` → Bot Service. `GET /citizen/cases/:id` → Case Service + Prediction status. Injects `correlationId` and `X-User-Context` into every downstream call. Rate limit: 60 req/min per user (configured in Kong). **Stateless — scales independently from all downstream services.**
 - **Effort:** 4h | **Owner:** Surjit
+
+### T4c — Bank, Telecom, and Gov BFFs
+- **Purpose:** API Gateways for the Bank, Telecom, and Gov portals. | **Depends On:** T4, T8b, T6b. **Unlocks:** T5d, T5e, T5f.
+- **Deliverable:** 3 lightweight FastAPI gateways serving `/api/v1/bank/`, `/api/v1/telecom/`, and `/api/v1/gov/`. Routes to Event Processing, Notification, and Reporting services.
+- **Effort:** 4h | **Owner:** Diganta
 
 ### T5a — Case Service
 - **Purpose:** Core domain — every flow anchors to a Case. | **Depends On:** T4, T3c. **Unlocks:** T5c, T13, T13b.
@@ -157,28 +155,42 @@
 
 ### T5c — Citizen UI + Bot Interface
 - **Purpose:** Citizen-facing frontend. | **Depends On:** T5a, T5b. **Unlocks:** T16.
-- **Deliverable:** Report submission form (POST /cases), risk verdict display with confidence + explanation + HITL status, bot chat widget (POST /bot/message).
+- **Deliverable:** Report submission form (POST /cases), risk verdict display with confidence + explanation + HITL status, bot chat widget (POST /bot/message). Built in a Vite Monorepo workspace.
 - **Effort:** 2 days | **Owner:** Surjit
+
+### T5d — Telecom Administrator UI
+- **Purpose:** Dashboard for telecom partners to see dropped calls. | **Depends On:** T4c, T5c (Monorepo setup).
+- **Deliverable:** Single-page React app connecting to Telecom BFF via SSE. Shows a rolling log of active call sessions and interdiction alerts.
+- **Effort:** 1 day | **Owner:** Surjit
+
+### T5e — Bank Official UI
+- **Purpose:** Dashboard for bank officials. | **Depends On:** T4c, T5c (Monorepo setup).
+- **Deliverable:** Single-page React app connecting to Bank BFF. Shows blocked transactions with exact AI risk scores.
+- **Effort:** 1 day | **Owner:** Surjit
+
+### T5f — Gov / MHA Portal
+- **Purpose:** Government dashboard for MHA alerts and NCRB reports. | **Depends On:** T4c, T5c (Monorepo setup).
+- **Deliverable:** Single-page React app connecting to Gov BFF. Shows incoming MHA webhook alerts and NCRB intelligence packages.
+- **Effort:** 1 day | **Owner:** Nilkanta
 
 ---
 
 ### T6a — Evidence Service
 - **Purpose:** Secure upload with cryptographic integrity. | **Depends On:** T3c. **Unlocks:** T6b, T16.
-- **Deliverable:** POST /cases/:id/evidence (returns MinIO presigned PUT URL — client uploads directly, bypassing the API server), POST /evidence/:id/confirm (client confirms upload; service validates MIME, runs SHA-256), GET /evidence/:id, GET /evidence/:id/hash. SHA-256 hash stored (FR-8.3). MIME validation: image/png, image/jpeg, application/pdf, audio/wav, audio/mpeg, audio/m4a (FR-3.5). **Malware scanning (FR-3.4): after MinIO upload confirmed, stream file bytes through ClamAV (`python-clamd` via TCP socket to `clamav` Docker container) — reject evidence with 422 + `{errorCode: MALWARE_DETECTED}` if scan fails.** Publishes Evidence.Uploaded via outbox.
+- **Deliverable:** POST /cases/:id/evidence (returns MinIO presigned PUT URL — client uploads directly, bypassing the API server), POST /evidence/:id/confirm (client confirms upload; service validates MIME, runs SHA-256), GET /evidence/:id, GET /evidence/:id/hash. SHA-256 hash stored (FR-8.3). MIME validation: image/png, image/jpeg, application/pdf, audio/wav, audio/mpeg, audio/m4a (FR-3.5). **Malware scanning (FR-3.4 — stubbed for hackathon):** After MinIO upload confirmed, the code path calls a `scan_file()` function that returns a mocked `{clean: true}` response. The function signature matches the production ClamAV interface (`python-clamd`) so swapping in real ClamAV requires only changing the implementation, not callers. Publishes Evidence.Uploaded via outbox.
 - **Effort:** 2 days | **Owner:** Nilkanta
-
 ### T6b — Reporting Service + Intelligence Package
 - **Purpose:** NCRB reports and court-admissible intelligence packages. | **Depends On:** T6a, T3c. **Unlocks:** T16.
-- **Deliverable:** POST /reports/ncrb, POST /reports/intelligence-package, GET /reports/:id. Intelligence package is a cryptographically signed bundle: case record + evidence hashes + Neo4j graph export + AI audit trail + chain-of-custody log. **Signing mechanism (FR-8.5): compute SHA-256 of the canonical JSON bundle, then sign the digest using the RS256 private key from Vault (`hvac` client). Return `{packageId, signatureAlgorithm: 'RS256', signature: base64, publicKeyFingerprint}` so any recipient can independently verify integrity with the platform's public key.** Publishes Report.Generated, IntelligencePackage.Generated.
+- **Deliverable:** POST /reports/ncrb, POST /reports/intelligence-package, GET /reports/:id. Intelligence package is a cryptographically signed bundle: case record + evidence hashes + Neo4j graph export + AI audit trail + chain-of-custody log. **Signing mechanism (FR-8.5):** Compute SHA-256 of the canonical JSON bundle, then sign the digest using the RS256 private key loaded from environment variable `SIGNING_PRIVATE_KEY`. Return `{packageId, signatureAlgorithm: 'RS256', signature: base64, publicKeyFingerprint}` so any recipient can independently verify integrity. Publishes Report.Generated, IntelligencePackage.Generated.
 - **Effort:** 1.5 days | **Owner:** Nilkanta
 
 ### T6c — Investigator Dashboard UI
 - **Purpose:** Full investigator interface — case queue, graph viz, geo heatmap, HITL panel. | **Depends On:** T6a, T6b, T8c, T8d, T3c. **Unlocks:** T16.
 - **Deliverable:** Case list (SSE real-time updates), case detail (AI verdict, confidence, model breakdown, HITL panel with approve/reject + mandatory justification), entity graph visualization, geospatial heatmap, intelligence package button.
-- **Effort:** 2.5 days | **Owner:** Nilkanta
+- **Effort:** 2 days | **Owner:** Nilkanta — [Tight schedule: Day 6 afternoon + Day 7. Cut polish/animations if behind; HITL panel + graph viz + geo heatmap are the non-negotiable demo features]
 
 ### T6d — Investigator BFF
-- **Purpose:** Single entry point for the Investigator UI — aggregates Case, Evidence, Graph, Geo, Search, Reporting. | **Depends On:** T4, T6a, T8c, T8d. **Unlocks:** T6c, T16.
+- **Purpose:** Single entry point for the Investigator UI — aggregates Case, Evidence, Graph, Geo, Search, Reporting. | **Depends On:** T4, T5a, T6a, T8c, T8d. **Unlocks:** T6c, T16.
 - **Deliverable:** FastAPI gateway at `/api/v1/investigator/`. Aggregates: `GET /investigator/cases` → Search Service (OpenSearch). `GET /investigator/cases/:id` → Case + FusedVerdict + Evidence list + Graph linkages (parallel with `asyncio.gather`). `POST /investigator/cases/:id/override` → Case Service. `GET /investigator/cases/:id/geo` → Geospatial Service. Injects `correlationId` + RBAC `jurisdictionId` scope into every downstream call. **Stateless — the aggregation fan-out using `asyncio.gather` ensures that adding more data sources only adds parallelism, not latency.**
 - **Effort:** 4h | **Owner:** Nilkanta
 
@@ -200,21 +212,20 @@
 - **Depends On:** T1, T3c. **Unlocks:** T7, T8, T8c, T8d, T8e, T8f.
 - **Deliverable:**
   - **Kafka topics provisioned:** All topics from T3 schema — **12 partitions per topic**, retention by type. Script in `/infra/kafka/provision-topics.sh`.
-  - **Schema Registry:** All Kafka event schemas registered as JSON Schema. Each service's Kafka producer validates against the schema before publishing — schema-invalid messages rejected at publish time, not silently corrupted downstream.
   - **Transactional Outbox Publisher:** PostgreSQL `LISTEN/NOTIFY` trigger for low-latency outbox signaling. Publisher uses `kafka-python` with idempotent producer (`enable.idempotence=true`, `acks=all`). **Scalability note: publisher is a dedicated pod — does not share thread pool with API serving.**
   - **DLQ consumer:** 3-retry with exponential backoff (1s, 5s, 30s); after max retries routes to `<topic>.DLQ`. Prometheus counter `kafka_dlq_depth` per topic.
-  - **Webhook endpoint:** `POST /events/telecom-stream` — validates against JSON Schema, publishes `CallSession.Initiated` to Kafka.
+  - **Webhook endpoints:** `POST /events/telecom-stream` publishes `TelecomEvent.Ingested`. `POST /events/bank-transaction` publishes `Transaction.Ingested`.
   - **Synchronous interdiction pass-through:** HTTP endpoint that bypasses Kafka entirely for the <300ms path (T15).
 - **Effort:** 1.5 days | **Owner:** Diganta
 
 ### T8c — Entity Graph Service
 - **Purpose:** Map fraud rings via linked entities. | **Depends On:** T3c, T8b. **Unlocks:** T6c, T16.
-- **Deliverable:** GET /graph/linkages?entityId=, GET /graph/shortest-path?from=&to=. Kafka consumer builds Neo4j graph from Case.Created + Prediction.Completed. Publishes Entity.RelationshipDiscovered, FraudRing.NodeIdentified.
+- **Deliverable:** GET /graph/linkages?entityId=, GET /graph/shortest-path?from=&to=. **Data Flow:** A background Kafka consumer constantly listens to `Case.Created`, `Prediction.Completed`, `TelecomEvent.Ingested`, and `Transaction.Ingested`. It mechanically builds a Neo4j graph using Cypher `MERGE` statements (e.g. `MERGE (a:Phone)-[:CALLED]->(b:Phone)`) to link disparate entities without manual intervention. The Orchestrator calls this API to fetch a 2-hop neighborhood to pass to the ML models. Publishes Entity.RelationshipDiscovered, FraudRing.NodeIdentified.
 - **Effort:** 1.5 days | **Owner:** Nilkanta
 
 ### T8d — Geospatial Intelligence Service
 - **Purpose:** Crime hotspot mapping, patrol APIs. | **Depends On:** T3c, T8b. **Unlocks:** T6c, T16.
-- **Deliverable:** GET /geo/hotspots?bbox= (PostGIS bounding box, GeoJSON), GET /geo/patrol-zones?district=, POST /geo/export. Kafka consumer updates PostGIS within 60s of Case.Created or CounterfeitScan.Submitted. RBAC-scoped by jurisdictionId.
+- **Deliverable:** GET /geo/hotspots?bbox= (PostGIS bounding box, GeoJSON), GET /geo/patrol-zones?district=, POST /geo/export. **Data Flow:** A Kafka consumer continuously extracts `complaint_lat`/`complaint_lon` from `Case.Created` events and executes a PostGIS upsert (`ON CONFLICT DO UPDATE SET incident_count = incident_count + 1`) within 60s. The Investigator Dashboard queries this to render live Leaflet heatmaps, strictly RBAC-scoped by the officer's `jurisdictionId` JWT claim.
 - **Effort:** 1.5 days | **Owner:** Nilkanta
 
 ### T8e — Notification Service (with MHA Alert)
@@ -228,7 +239,7 @@
   - FastAPI service with `GET /search/cases?q=&status=&riskTier=&from=&cursor=&limit=` — delegates to OpenSearch. Returns cursor-paginated results with facets (`{items[], nextCursor, facets: {status: {}, riskTier: {}}}`).
   - Kafka consumer on `Case.Created`, `Case.Updated`, `Evidence.Uploaded`, `Prediction.Completed` — upserts documents into `case_index` and `evidence_index` (OpenSearch `_index` with `_id=caseId`).
   - Full-text search (`match` on description, notes), structured filter (`term` on status, riskTier, jurisdictionId), fuzzy search (`fuzzy` query on entity names — FR-9.3), geospatial search (`geo_bounding_box` on complaint_location — FR-9.4), faceted aggregations (FR-9.5).
-  - **Scalability:** OpenSearch horizontal scaling via shard routing. Consumer group allows up to 12 pods to index in parallel (one per partition).
+  - **Scalability:** OpenSearch horizontal scaling via shard routing (1 shard locally; 3 shards + 1 replica in production). Consumer group allows up to 12 pods to index in parallel (one per partition).
 - **Effort:** 1 day | **Owner:** Diganta
 
 ---
@@ -278,8 +289,8 @@
 
 ### T13 — Multi-Source ML Fusion Integration
 - **Purpose:** Wire all 4 ML APIs into the Inference Orchestrator. Most architecturally significant integration.
-- **Depends On:** T8, T10a (minimum scam NLP stub), T5a, T3b. **Unlocks:** T13b, T13c, T16.
-- **Deliverable:** Case creation triggers POST /inference/analyze; Orchestrator fans out to all 4 in parallel; fused verdict stored; Prediction.Completed published; INCOMPLETE + PENDING_REVIEW flows working; timeout/fallback working.
+- **Depends On:** T8, T10a, T5a, T3b, T8c. **Unlocks:** T13b, T13c, T16.
+- **Deliverable:** Case creation triggers POST /inference/analyze. **Data Flow (Anchor and Expand Strategy):** The Orchestrator acts as the middleman. It extracts the primary suspect's ID (e.g., phone number) from the raw complaint and uses it as an anchor to call T8c (`GET /graph/linkages?entityId={id}`). T8c executes a Cypher query to pull the exact 2-hop graph neighborhood surrounding that anchor. The Orchestrator bundles the complaint and this 2-hop sub-graph into a unified payload, then fans out this rich context to all 4 ML APIs in parallel using `asyncio.gather`. Finally, it computes a `fusedScore`, stores the complete `FusedVerdict` JSON (including model-level explanations), and publishes `Prediction.Completed`. INCOMPLETE + PENDING_REVIEW flows working.
 - **Effort:** 1 day | **Owner:** Diganta leads, Surjit pairs — [SYNC POINT #1 — Day 6]
 
 ### T13b — HITL Override Integration
@@ -300,7 +311,7 @@
 
 ### T15 — Real-Time Interdiction Path (<300ms SLA)
 - **Purpose:** Block financial transfer before it executes (QAS-5). | **Depends On:** T8, T8b, T8e, T3b.
-- **Deliverable:** Synchronous path bypassing Kafka: telecom event -> Event Processing -> Orchestrator -> ML (scam-nlp + audio) -> bank block stub -> MHA alert. P99 <300ms locally. Audit event published asynchronously after response returns. Demo-able with simulated payload.
+- **Deliverable:** Synchronous path bypassing Kafka: telecom event -> Event Processing -> Orchestrator -> ML (scam-nlp + audio) -> bank block stub -> MHA alert. P99 <300ms locally. `TelecomEvent.Ingested` published asynchronously to Kafka *after* response returns. Demo-able with simulated payload.
 - **Effort:** 1 day | **Owner:** Diganta — [High complexity; schedule buffer here]
 
 ### T16 — End-to-End Integration & Smoke Test
@@ -337,9 +348,9 @@ Parallel must-not-slip: T8 (Orchestrator) complete Day 5. T10a stub live Day 2. 
 
 | Member | Tasks | Rationale |
 |---|---|---|
-| Diganta | T1,T2,T3,T3b,T3c,T7,T8,T8b,T13,T13b,T13c,T15,T16,T18,T19,T20 | Owns infra, all API contracts, Inference Orchestrator, real-time interdiction, integration lead. |
-| Surjit | T4,T5a,T5b,T5c,T13(pair),T13b(Case side),T14,T17/T18 | Owns citizen vertical slice. Provides Case Service integration hook for ML. |
-| Nilkanta | T6a,T6b,T6c,T8c,T8d,T8e,T13b(dashboard),T13c(Notification),T14,T17/T18 | Owns investigator slice + all data intelligence services (Geo, Graph, Reporting). |
+| Diganta | T1,T2,T3,T3b,T3c,T4c,T7,T8,T8b,T13,T13b,T13c,T15,T16,T18,T19,T20 | Owns infra, all API contracts, Inference Orchestrator, real-time interdiction, integration lead. |
+| Surjit | T4,T5a,T5b,T5c,T5d,T5e,T13(pair),T13b(Case side),T14,T17/T18 | Owns citizen vertical slice and new department UIs. Provides Case Service integration hook for ML. |
+| Nilkanta | T6a,T6b,T6c,T8c,T8d,T8e,T5f,T13b(dashboard),T13c(Notification),T14,T17/T18 | Owns investigator slice + all data intelligence services (Geo, Graph, Reporting). |
 | Kushal | T9,T10a,T10b,T10c,T10d,T11,T12,T12b | Fully decoupled. Only sync point is T2 (contract Day 1). All 4 stubs live by Day 3. |
 
 
@@ -348,13 +359,13 @@ Parallel must-not-slip: T8 (Orchestrator) complete Day 5. T10a stub live Day 2. 
 | Day | Date | Diganta | Surjit | Nilkanta | Kushal | Sync / Milestone |
 |---|---|---|---|---|---|---|
 | 1 | Sat Jul 11 | T1,T2,T3,T3b | Env setup, read all docs, ask clarifying Qs | Env setup, read all docs | T9: data prep all 4 models | EOD: T3c Design sign-off, all 4 |
-| 2 | Sun Jul 12 | T8b: Kafka backbone | T4: Auth/Identity | T6a: Evidence start | T10a: Scam NLP stub | EOD: T10a stub live |
+| 2 | Sun Jul 12 | T8b: Kafka, T4c: BFFs | T4: Auth/Identity | T6a: Evidence start | T10a: Scam NLP stub | EOD: T10a stub live |
 | 3 | Mon Jul 13 | T8: Orchestrator start | T5a: Case Service start | T6a: Evidence finish, T8d: Geospatial start | T10b: CV stub, T10c: Graph stub | — |
 | 4 | Tue Jul 14 | T8: Orchestrator finish | T5a: Case Service finish | T8d: Geo finish, T8c: Entity Graph | T10d: Audio stub, T11: tuning starts | All 4 ML stubs live |
 | 5 | Wed Jul 15 | T7: Audit Service | T5b: Bot stub, T5c: Citizen UI start | T8e: Notification+MHA, T6b: Reporting start | T11: tuning, T12: explainability | Platform services complete |
 | 6 | Thu Jul 16 | T13 lead, T13c: MHA alert | T5c: Citizen UI + Bot UI finish | T6b: Reporting finish, T6c: Dashboard start | T11 finalize, T12 all models | SYNC #1: Multi-source ML integration |
-| 7 | Fri Jul 17 | T13b: HITL, T15: interdiction path | T13b (Case side), T14 start | T6c: Dashboard finish (HITL+graph+geo), T14 start | T12b: edge model start | — |
-| 8 | Sat Jul 18 | T16 lead: E2E smoke test | T14 finish, T16 | T14 finish, T16 | Support T16, T12b finish | SYNC #2: Full E2E verified, all 4 |
+| 7 | Fri Jul 17 | T13b: HITL, T15: interdiction path | T13b, T14 start, T5d: Telecom UI | T6c: Dashboard finish, T14 start | T12b: edge model start | — |
+| 8 | Sat Jul 18 | T16 lead: E2E smoke test | T14 finish, T16, T5e: Bank UI | T14 finish, T16, T5f: Gov UI | Support T16, T12b finish | SYNC #2: Full E2E verified, all 4 |
 | 9 | Sun Jul 19 | T17: contract/integration/system tests | T17: citizen slice tests | T17: investigator slice tests | T17: ML validation (precision/recall) | — |
 | 10 | Mon Jul 20 | T18 coord, T19 deployment | T18: bug fixes | T18: bug fixes | Deck ML content | MILESTONE: Demo-ready deployed |
 | 11 | Tue Jul 21 | T20: full architecture diagram | T20: deck + video | T20: deck + video | T20: ML accuracy slides | — |
@@ -369,18 +380,20 @@ Parallel must-not-slip: T8 (Orchestrator) complete Day 5. T10a stub live Day 2. 
 ### Repository Structure
 ```
 /backend/
+  audit/                   (Diganta)
   auth/                    (Surjit)
-  case/                    (Surjit)
   bot/                     (Surjit)
+  case/                    (Surjit)
+  citizen-bff/             (Surjit)
+  event-processing/        (Diganta)
   evidence/                (Nilkanta)
-  notification/            (Nilkanta)
-  reporting/               (Nilkanta)
   geospatial/              (Nilkanta)
   graph/                   (Nilkanta)
   inference-orchestrator/  (Diganta)
-  event-processing/        (Diganta)
-  audit/                   (Diganta)
-  ml-client/               (Diganta - integration glue calling Kushal ML APIs)
+  investigator-bff/        (Nilkanta)
+  notification/            (Nilkanta)
+  reporting/               (Nilkanta)
+  search/                  (Diganta)
 /frontend/
   citizen/                 (Surjit)
   investigator/            (Nilkanta)
@@ -568,6 +581,7 @@ T3 All schemas            XX
 T3b Sequence diagrams     XX
 T3c Sign-off              x(EOD)
 T4 Auth (Surjit)                  XX
+T4c BFFs (Diganta)                 XX
 T8b Kafka backbone (Diganta)       XX
 T6a Evidence (Nilkanta)             xx xx
 T10a Scam NLP stub (Kushal)      XX
@@ -585,7 +599,10 @@ T6b Reporting (Nilkanta)                     xx xx xx
 T11 ML Tuning (Kushal)                    xx xx xx xx
 T12 Explainability (Kushal)               xx xx
 T5c Citizen UI (Surjit)                    xx xx xx xx
+T5d Telecom UI (Surjit)                                   xx
+T5e Bank UI (Surjit)                                         xx
 T6c Dashboard UI (Nilkanta)                  xx xx xx xx xx
+T5f Gov UI (Nilkanta)                                        xx
 T13 ML Integration (Diganta+Surjit)                    XX
 T13c MHA alert (Diganta+Nilkanta)                        XX
 T13b HITL override (Diganta+Surjit+Nilkanta)                     XX
@@ -607,9 +624,7 @@ T21 Rehearsal                                                        XX
 - [ ] .env.example current and complete
 - [ ] Deployment target provisioned and reachable
 - [ ] DB migrations run cleanly on a fresh instance (PostgreSQL, Neo4j, PostGIS, OpenSearch index mappings)
-- [ ] Kafka topics and Schema Registry schemas configured on deploy target
-- [ ] Vault running in production mode with all secrets populated
-- [ ] Prometheus scraping all 15 services, Grafana dashboards green
+- [ ] Kafka topics provisioned via `/infra/kafka/provision-topics.sh`
 - [ ] Kong upstream health checks passing for all backend services
 - [ ] All 4 ML models deployed alongside ML services
 - [ ] Full E2E flow verified on deployed instance (not just local)
@@ -637,8 +652,8 @@ Golden rule: Always paste real context - the contract file, the exact error, the
 
 ### 11.2 Day 1 — Design Sprint (Diganta)
 
-**T1 — Production Docker Compose**
-> *"Set up a production-grade monorepo. Folders: /backend/{auth,case,evidence,notification,reporting,geospatial,graph,bot,inference-orchestrator,event-processing,audit}, /frontend/{citizen,investigator}, /ml/{scam-nlp,counterfeit-cv,graph-analyzer,audio-analyzer,edge}, /infra/{docker,kong,vault,prometheus,grafana,loki,otel}, /docs. Write a docker-compose.yml with all of: (1) postgres:16-alpine with an init.sql that creates per-domain schemas and runs migrations. (2) postgis/postgis:16-3.4 dedicated container for geospatial domain. (3) neo4j:5-community with NEO4JPLUGINS=apoc. (4) redis:7-alpine. (5) opensearch:2 node in single-node mode + opensearch-dashboards:2. (6) confluentinc/confluent-local:7.6 for Kafka KRaft. (7) confluentinc/cp-schema-registry:7.6 linked to Kafka. (8) minio/minio with an mc init container that creates evidence, reports, and edge-model buckets on startup. (9) kong:3-alpine in DB-less mode with KONG_DATABASE=off and KONG_DECLARATIVE_CONFIG=/etc/kong/kong.yml — mount /infra/kong/kong.yml. (10) vault:1.16 in dev mode. (11) prom/prometheus:v2.52, grafana/grafana:10.4, grafana/loki:3.0, grafana/promtail:3.0, grafana/tempo:2.4, otel/opentelemetry-collector-contrib:0.100.0. Add health checks with depends_on conditions so Kafka is healthy before Schema Registry, Schema Registry before any backend service. Write a Makefile with: make up, make down, make logs, make migrate, make seed-vault. Include a .env.example with all variable names but no values."*
+**T1 — Hackathon Docker Compose**
+> *"Set up a monorepo. Folders: /backend/{auth,case,evidence,notification,reporting,geospatial,graph,bot,inference-orchestrator,event-processing,audit}, /frontend/{citizen,investigator}, /ml/{scam-nlp,counterfeit-cv,graph-analyzer,audio-analyzer,edge}, /infra/{docker,kong,prometheus,grafana,loki,tempo}, /docs. Write a docker-compose.yml with all of: (1) postgres:16-alpine with an init.sql that creates per-domain schemas and runs migrations — services connect directly on port 5432. (2) postgis/postgis:16-3.4 dedicated container for geospatial domain. (3) neo4j:5-community with NEO4JPLUGINS=apoc. (4) redis:7-alpine. (5) opensearch:2 node in single-node mode + opensearch-dashboards:2. (6) bitnamilegacy/kafka:3.6 for Kafka KRaft (no Zookeeper). (7) minio/minio with an mc init container that creates evidence, reports, and edge-model buckets on startup. (8) kong:3 in DB-less mode with KONG_DATABASE=off and KONG_DECLARATIVE_CONFIG=/etc/kong/kong.yml — mount /infra/kong/kong.yml. (9) prom/prometheus:v2.52, grafana/grafana:10.4, grafana/loki:3.0, grafana/tempo:2.4. Add health checks with depends_on conditions. Write a Makefile with: make up, make down, make logs, make kafka-topics, make opensearch-index, make kong-reload. Include a .env.example with all variable names. Note: production deployment adds PgBouncer, Vault, ClamAV, Schema Registry, Promtail, OTel Collector — all documented in architecture slides."*
 
 **T2 — All API Contracts**
 > *"We are building a production-grade AI fraud detection platform with 15 microservices backed by FastAPI [paste SRS FRs 1-14]. Write a complete API contract for each service. All contracts must include: exact routes (versioned under /api/v1/), methods, request/response JSON schemas (field names, types, required/optional, constraints), HTTP status codes, standard error envelope with requestId/correlationId/errorCode/message/details, idempotency key requirements on mutating endpoints, and rate limit headers (X-RateLimit-Limit, X-RateLimit-Remaining). Also include ml-contract.md covering 4 AI model endpoints each returning {score, riskTier, confidence, signals[], explanation, processingMs, modelVersion}. Note: FastAPI will auto-generate OpenAPI specs from these — the contract files ARE the OpenAPI spec comments."*
@@ -647,12 +662,12 @@ Golden rule: Always paste real context - the contract file, the exact error, the
 > *"Given this API contract [paste all contracts], write: (1) PostgreSQL 16 DDL for all tables — per-domain schemas (identity, investigation, evidence, reporting, audit, predictions, outbox), FKs, indexes (including GIN index on tsvector columns for full-text search, BRIN index on created_at, B-tree on status), CHECK constraints, triggers for outbox NOTIFY signaling. (2) Neo4j 5 schema: Node labels (Entity, Account, Device, PhoneNumber, BankAccount) and Relationship types (LINKED_TO, TRANSACTED_WITH, OWNS, CALLED, REPORTED_BY) with property constraints and indexes. (3) PostGIS DDL for dedicated geospatial database: FraudHotspot, PatrolZone, CounterfeitSeizurePoint with GEOMETRY(Point, 4326) and GEOMETRY(Polygon, 4326) columns, spatial indexes (GIST). (4) Redis key convention documentation with TTL policies per key type. (5) Kafka topic list with partition counts, replication factor, retention.ms, cleanup.policy. (6) OpenSearch index mapping for Case and Evidence documents (dynamic mapping disabled, explicit field types for all searchable fields, nested objects for AI verdict breakdown)."*
 
 **T3b — Sequence Diagrams**
-> *"Write Mermaid sequence diagrams for: (1) Citizen report -> Kong JWT validation -> Citizen BFF -> Case Service (Outbox write) -> Orchestrator calls all 4 ML models in parallel -> fused verdict -> HITL gate if low-confidence -> case created, Prediction.Completed to Kafka -> OpenSearch indexed. (2) Evidence upload -> presigned URL from MinIO -> hash computed -> Evidence.Uploaded outbox -> IntelligencePackage triggered. (3) Telecom stream event -> <300ms interdiction synchronous path -> bank block + MHA alert + async Kafka publish. (4) Offline counterfeit scan syncs -> conflict resolution logic. (5) Case created -> Geospatial Kafka consumer upserts PostGIS -> OpenSearch indexes -> SSE push to dashboard. (6) Investigator overrides verdict -> immutable override record -> Prediction.Overridden -> Audit.Recorded."*
+> *"Write Mermaid sequence diagrams for: (1) Citizen report -> Kong JWT validation -> Citizen BFF -> Case Service (Outbox write) -> Orchestrator fetches subgraph from Entity Graph Service -> Orchestrator calls all 4 ML models in parallel (passing subgraph to Graph Analyzer) -> fused verdict -> HITL gate if low-confidence -> case created, Prediction.Completed to Kafka -> OpenSearch indexed. (2) Evidence upload -> presigned URL from MinIO -> hash computed -> Evidence.Uploaded outbox -> IntelligencePackage triggered. (3) Telecom stream event -> <300ms interdiction synchronous path -> bank block + MHA alert + async Kafka publish. (4) Offline counterfeit scan syncs -> conflict resolution logic. (5) Case created -> Entity Graph consumer MERGEs nodes -> Geospatial Kafka consumer upserts PostGIS -> OpenSearch indexes -> SSE push to dashboard. (6) Investigator overrides verdict -> immutable override record -> Prediction.Overridden -> Audit.Recorded. (7) Async telecom/transaction ingestion -> Event Processing -> Kafka -> Entity Graph MERGEs bank and telecom nodes."*
 
 ### 11.3 Surjit's Citizen Slice
 
 **T4 — Auth**
-> *"Using [paste auth.md] and [paste User/Role DDL], implement JWT login/register/refresh/MFA-verify with FastAPI. RS256 tokens using python-jose, RBAC claims in JWT (role, orgId, jurisdictionId). JWT middleware as a FastAPI Depends() that validates the token signature + expiry + revocation check against Redis (JWT denylist). Passlib with bcrypt for password hashing. MFA: TOTP via pyotp, QR code endpoint for authenticator app enrollment. On login, read DB password from Vault using hvac Python client — do NOT read secrets from env vars directly. Add prometheus-fastapi-instrumentator and opentelemetry-instrumentation-fastapi at app startup."*
+> *"Using [paste auth.md] and [paste User/Role DDL], implement JWT login/register/refresh/MFA-verify with FastAPI. RS256 tokens using python-jose, RBAC claims in JWT (role, orgId, jurisdictionId). JWT middleware as a FastAPI Depends() that validates the token signature + expiry + revocation check against Redis (JWT denylist). Passlib with bcrypt for password hashing. MFA: TOTP via pyotp, QR code endpoint for authenticator app enrollment. Read secrets (DB password, JWT private key) from environment variables. Add prometheus-fastapi-instrumentator and opentelemetry-instrumentation-fastapi at app startup. Configure OpenTelemetry to send OTLP traces to Tempo at `http://tempo:4317`."*
 
 **T5a — Case Service**
 > *"Implement Case Service with FastAPI per [paste case.md] and [paste Case/CaseTimeline/OverrideRecord DDL]. State machine: New->Assigned->Investigating->Pending_AI->Action_Taken->Closed. PATCH /cases/:id/state validates transitions (409 on invalid). PATCH /cases/:id/verdict/override: validate justification min 10 chars (422 otherwise), INSERT immutable OverrideRecord (no UPDATE/DELETE ever on this table — add a PostgreSQL trigger that raises an exception on UPDATE/DELETE). On POST /cases: use SQLAlchemy async session to write the Case row AND the outbox row in a single transaction (unit of work pattern). The outbox row triggers a NOTIFY to the outbox publisher. Use asyncpg for connection. Stub ML call — return a hardcoded verdict object matching the Orchestrator response contract exactly."*
@@ -666,13 +681,13 @@ Golden rule: Always paste real context - the contract file, the exact error, the
 ### 11.4 Nilkanta's Investigator Slice
 
 **T6a — Evidence Service**
-> *"Implement POST /cases/:id/evidence (multipart) with FastAPI per [paste evidence.md]. (1) Generate a MinIO presigned PUT URL using minio-py SDK, return it to the client for direct browser upload — do not proxy the file bytes through the API server. (2) After the client confirms upload via POST /evidence/:id/confirm, download only the file header bytes, validate MIME type (image/png, image/jpeg, application/pdf, audio/wav, audio/mpeg, audio/mp4 — return 415 otherwise), compute SHA-256 hash using hashlib on the streamed bytes and store in evidence_hash table alongside evidenceId, caseId, fileSize, mimeType. (3) Write Evidence.Uploaded to outbox table in the same transaction as the DB insert. (4) Read MinIO credentials from Vault using hvac client, not env vars."*
+> *"Implement POST /cases/:id/evidence (multipart) with FastAPI per [paste evidence.md]. (1) Generate a MinIO presigned PUT URL using minio-py SDK, return it to the client for direct browser upload — do not proxy the file bytes through the API server. (2) After the client confirms upload via POST /evidence/:id/confirm, download only the file header bytes, validate MIME type (image/png, image/jpeg, application/pdf, audio/wav, audio/mpeg, audio/mp4 — return 415 otherwise), compute SHA-256 hash using hashlib on the streamed bytes and store in evidence_hash table alongside evidenceId, caseId, fileSize, mimeType. (3) Call a `scan_file(file_bytes)` stub function (returns `{clean: True}` for now — production swaps this for `python-clamd` ClamAV TCP socket call). (4) Write Evidence.Uploaded to outbox table in the same transaction as the DB insert. Read MinIO credentials from environment variable `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`."*
 
 **T8d — Geospatial Service**
-> *"Implement GET /geo/hotspots, GET /geo/patrol-zones, POST /geo/export with FastAPI per [paste geo contract]. Connect to the dedicated PostGIS container (not the primary Postgres) using asyncpg. Hotspot query: SELECT ST_AsGeoJSON(geom)::json as geometry, incident_count, risk_tier FROM fraud_hotspot WHERE ST_Within(geom, ST_MakeEnvelope($1, $2, $3, $4, 4326)) ORDER BY incident_count DESC LIMIT 500 — return as RFC 7946 GeoJSON FeatureCollection. Write a confluent-kafka-python consumer on Case.Created: extract complaint_lat, complaint_lon, risk_tier, case_id — INSERT into fraud_hotspot with ON CONFLICT (geom_hash) DO UPDATE SET incident_count = incident_count + 1. Apply RBAC: add WHERE jurisdiction_id = $jurisdictionId from JWT claim. Register the geospatial JSON schema in Schema Registry before the consumer starts."*
+> *"Implement GET /geo/hotspots, GET /geo/patrol-zones, POST /geo/export with FastAPI per [paste geo contract]. Connect to the dedicated PostGIS container (not the primary Postgres) using asyncpg. Hotspot query: SELECT ST_AsGeoJSON(geom)::json as geometry, incident_count, risk_tier FROM fraud_hotspot WHERE ST_Within(geom, ST_MakeEnvelope($1, $2, $3, $4, 4326)) ORDER BY incident_count DESC LIMIT 500 — return as RFC 7946 GeoJSON FeatureCollection. Write a kafka-python consumer on Case.Created and CounterfeitScan.Submitted: extract complaint_lat, complaint_lon, risk_tier, case_id — INSERT into fraud_hotspot with ON CONFLICT (geom_hash) DO UPDATE SET incident_count = incident_count + 1. Apply RBAC: add WHERE jurisdiction_id = $jurisdictionId from JWT claim."*
 
 **T8c — Entity Graph Service**
-> *"Implement GET /graph/linkages and GET /graph/shortest-path with FastAPI per [paste graph contract] using the official neo4j Python async driver. Linkages: MATCH (e:Entity {id: $id})-[r*1..2]-(linked) RETURN e, r, linked, labels(linked) as types LIMIT 100. Shortest path: MATCH p=shortestPath((a:Entity {id: $from})-[*..6]-(b:Entity {id: $to})) RETURN [n in nodes(p) | {id: n.id, type: labels(n)[0], score: n.fraud_score}] as path. Write a confluent-kafka-python consumer on Case.Created + Prediction.Completed: MERGE (e:Entity {id: $phoneNumber, type: 'PhoneNumber', fraud_score: $fusedScore}) — update fraud_score on Prediction.Completed. Register JSON schemas in Schema Registry."*
+> *"Implement GET /graph/linkages and GET /graph/shortest-path with FastAPI per [paste graph contract] using the official neo4j Python async driver. Linkages: MATCH (e:Entity {id: $id})-[r*1..2]-(linked) RETURN e, r, linked, labels(linked) as types LIMIT 100. Shortest path: MATCH p=shortestPath((a:Entity {id: $from})-[*..6]-(b:Entity {id: $to})) RETURN [n in nodes(p) | {id: n.id, type: labels(n)[0], score: n.fraud_score}] as path. Write a kafka-python consumer on Case.Created, Prediction.Completed, TelecomEvent.Ingested, and Transaction.Ingested. MERGE (e:Entity {id: $phoneNumber, type: 'PhoneNumber', fraud_score: $fusedScore}) — update fraud_score on Prediction.Completed. For telecom/transactions, MERGE caller/receiver nodes and BankAccount nodes with CALLED and TRANSACTED_WITH edges. Publish Entity.RelationshipDiscovered when a new link is discovered."*
 
 **T6c — Investigator Dashboard**
 > *"Build a React 18 + Vite investigator dashboard with React Query, Zustand, and Tailwind CSS: (1) Case list page: EventSource connection to GET /api/v1/notify/sse for real-time push updates — new Case.Created events prepend to the list with a slide-in animation. Table columns: ID (copyable), status badge (colored pill), risk tier badge, confidence % (colored number), created_at (relative time). Client-side full-text search against the OpenSearch-backed GET /api/v1/cases/search. (2) Case detail page: AI verdict card with a 0-100 arc gauge (victory-native or recharts RadialBar), confidence percentage, per-model breakdown table (Scam NLP / Counterfeit CV / Graph / Audio — individual scores or UNAVAILABLE badge if model not applicable), explanation text in a styled alert box. HITL override panel, visible only when status=PENDING_REVIEW: Approve button (green), Reject button (red), mandatory justification textarea (min 10 chars with live char counter, submit disabled until threshold met), calls PATCH /cases/:id/verdict/override. (3) Entity graph panel: react-force-graph-2d, nodes colored by fraud_score (red gradient), node click shows entity detail drawer. (4) Geospatial heatmap: Leaflet.js with Leaflet.heat plugin, GeoJSON loaded from GET /geo/hotspots?bbox={map bounds}, heatmap intensity driven by incident_count."*
@@ -690,18 +705,18 @@ Kushal owns the ML pipeline end-to-end. The only platform-facing obligations are
 > *"In Case Service [paste T5a code], the PATCH /cases/:id/verdict/override endpoint: validate justification is non-empty and at least 10 chars (return 422 otherwise). On APPROVE: transition case from Pending_AI to Investigating, make an HTTP call to Notification Service to resume the suppressed alert. On REJECT: transition to Action_Taken with rejection_reason populated. In both cases: INSERT an immutable OverrideRecord row — never UPDATE or DELETE this table. Publish Prediction.Overridden to Kafka outbox → Audit Service logs it. In the Orchestrator: when setting PENDING_REVIEW status, do NOT call Notification Service — store a pending_notification flag on the FusedVerdict row and resume only when an APPROVE override comes in."*
 
 **T15 — Real-Time Interdiction**
-> *"Implement the <300ms synchronous path in Event Processing Service [paste T8b code]. Add POST /events/telecom-stream that accepts call session metadata and processes it synchronously (not via Kafka). Immediately make an HTTP POST to /inference/analyze on the Orchestrator with onlyModels: [scam-nlp, audio-analyzer] and a 1500ms total timeout. On HIGH verdict: concurrently call POST http://bank-stub/block-transfer (mock) and POST /notify/mha-alert using asyncio.gather. Return the interdiction verdict to the caller. After the response has been sent, publish Intervention.Requested to Kafka asynchronously (fire-and-forget). Add middleware using time.perf_counter to log P50 and P99 latency per request. Target: full synchronous path under 300ms locally."*
+> *"Implement the <300ms synchronous path in Event Processing Service [paste T8b code]. Add POST /events/telecom-stream that accepts call session metadata and processes it synchronously (not via Kafka). Immediately make an HTTP POST to /inference/analyze on the Orchestrator with `onlyModels: [scam-nlp, audio-analyzer]` and a **200ms total timeout** (budget: ~180ms for ML parallel calls + 20ms orchestrator overhead — anything beyond this structurally breaks the 300ms P99 SLA). On HIGH verdict: concurrently call POST http://bank-stub/block-transfer (mock) and POST /notify/mha-alert using asyncio.gather. Return the interdiction verdict to the caller. After the response has been sent, publish Intervention.Requested to Kafka asynchronously (fire-and-forget). Add middleware using time.perf_counter to log P50 and P99 latency per request — add a warning log if P99 exceeds 250ms. Target: full synchronous path under 300ms locally. **SLA budget breakdown: ingress→Event Processing: 10ms | Event Processing→Orchestrator: 10ms | Orchestrator ML parallel (scam-nlp + audio, 2s normal timeout capped to 180ms here): 180ms | bank stub + MHA alert concurrent: 60ms | total budget: ~260ms leaving 40ms P99 headroom."*
 
 ### 11.7 Testing, Deploy, Delivery
 
 **T17 — Integration Tests**
-> *"Write pytest integration tests for the full integration stack verifying: (1) T13 fusion: all 4 ML models called concurrently — assert total time ≈ max single model latency, not sum. (2) One model returning 504 triggers one retry at 500ms, then UNAVAILABLE — assert exactly 2 httpx calls were made to that model. (3) All models UNAVAILABLE — assert verdict status=INCOMPLETE and case transitions to Investigating (AI_TIMEOUT re-entry). (4) confidence < 0.6 — assert PENDING_REVIEW and Notification Service mock is NOT called. (5) HIGH confidence — assert Prediction.Completed written to Kafka outbox. (6) Evidence upload: assert ClamAV is called for every confirmed upload; mock ClamAV returning FOUND — assert 422 MALWARE_DETECTED. (7) PgBouncer: assert services connect to PgBouncer port, not Postgres directly. Use httpx.AsyncClient, mock Kafka producer, mock ClamAV TCP socket."*
+> *"Write pytest integration tests for the full integration stack verifying: (1) T13 fusion: all 4 ML models called concurrently — assert total time ≈ max single model latency, not sum. (2) One model returning 504 triggers one retry at 500ms, then UNAVAILABLE — assert exactly 2 httpx calls were made to that model. (3) All models UNAVAILABLE — assert verdict status=INCOMPLETE and case transitions to Investigating (AI_TIMEOUT re-entry). (4) confidence < 0.6 — assert PENDING_REVIEW and Notification Service mock is NOT called. (5) HIGH confidence — assert Prediction.Completed written to Kafka outbox. (6) Evidence upload: assert scan_file() stub is called for every confirmed upload; mock it returning `{clean: False}` — assert 422 MALWARE_DETECTED is returned. Use httpx.AsyncClient and mock Kafka producer."*
 
 **T19 — Deployment**
-> *"I have a production docker-compose.yml with 17+ services: PostgreSQL, PgBouncer, PostGIS, Neo4j, Redis, OpenSearch, Kafka KRaft, Schema Registry, MinIO, ClamAV, Kong, Vault, Prometheus, Grafana, Loki, Tempo, OTel Collector, plus 15 backend services [paste file]. Walk me through deploying to [Railway/Render/DigitalOcean App Platform / Fly.io]: (1) Vault: switch from dev mode to production mode — initialize, unseal, store all service secrets (DB passwords, MinIO access key, ML API keys, JWT RS256 private key). (2) PgBouncer: set `DATABASE_URL` for all services to point to PgBouncer, not Postgres directly — verify pool stats endpoint. (3) Redis: if provider supports Redis Cluster, configure 3 primary + 3 replica shards; otherwise use Redis Sentinel. (4) Persistent volumes for PostgreSQL, PostGIS, Neo4j, MinIO, OpenSearch, Redis. (5) Kafka KRaft: set KAFKA_NODE_ID, KAFKA_PROCESS_ROLES, KAFKA_CONTROLLER_QUORUM_VOTERS. Run topic provisioning script. Run Schema Registry schema registration script. (6) ClamAV: verify freshclam database is updated before Evidence Service starts. (7) Kong: mount kong.yml, verify all upstream service URLs resolve, test JWT validation. (8) OpenSearch: verify case_index and evidence_index mappings created (3 shards). (9) Search Service: verify Kafka consumer group is assigned partitions. (10) Health sweep: all services return 200 on GET /health/ready. Explain every command."*
+> *"I have a hackathon docker-compose.yml with 14 services: PostgreSQL, PostGIS, Neo4j, Redis, OpenSearch, Kafka KRaft, MinIO, Kong, Prometheus, Grafana, Loki, Tempo, plus backend services [paste file]. Walk me through deploying to [Railway/Render/DigitalOcean App Platform / Fly.io]: (1) Persistent volumes for PostgreSQL, PostGIS, Neo4j, MinIO, OpenSearch, Redis. (2) Kafka KRaft: set KAFKA_NODE_ID, KAFKA_PROCESS_ROLES, KAFKA_CONTROLLER_QUORUM_VOTERS. Run topic provisioning script `/infra/kafka/provision-topics.sh`. (3) Environment variables from .env.example — set all in deployment platform's secret manager. (4) Kong: mount kong.yml, verify all upstream service URLs resolve, test JWT validation. (5) OpenSearch: verify case_index and evidence_index mappings created. (6) Health sweep: all services return 200 on GET /health/ready. (7) Prometheus scraping all services, Grafana dashboards green. Explain every command."*
 
 **T20 — Architecture Description**
-> *"Generate a detailed description for a production-grade architecture diagram of our AI fraud detection platform. 17 microservices organized into: Control Plane (Kong API Gateway, Identity Service, Configuration Service — backed by Redis + Vault, Audit Service) and Data Plane (Case Management, Evidence Management, Search Service, Inference Orchestrator, Event Processing, Entity Graph, Geospatial Intelligence, Notification, Reporting, Conversational Bot, Citizen BFF, Investigator BFF). External: 4 AI ML services (Scam NLP, Counterfeit CV, Graph Analyzer, Audio Analyzer), Telecom APIs, Banking Core, MHA webhook, NCRB portal, ClamAV, Mapping APIs. Data stores: PostgreSQL 16 + PgBouncer, PostGIS 3.4, Neo4j 5, Redis 7 Cluster, Kafka 3.6 KRaft + Schema Registry, MinIO, OpenSearch 2. Observability: Prometheus + Grafana + Loki + Tempo + OTel Collector. Secrets: HashiCorp Vault. Show horizontal scaling boundaries (which services scale independently), the synchronous interdiction path (<300ms), the async Kafka event fan-out, and the HITL gate."*
+> *"Generate a detailed description for a production-grade architecture diagram of our AI fraud detection platform for a hackathon pitch deck. 15 microservices organized into: Control Plane (Kong API Gateway, Identity Service, Configuration Service — backed by Redis, Audit Service) and Data Plane (Case Management, Evidence Management, Search Service, Inference Orchestrator, Event Processing, Entity Graph, Geospatial Intelligence, Notification, Reporting, Conversational Bot, Citizen BFF, Investigator BFF). External: 4 AI ML services (Scam NLP, Counterfeit CV, Graph Analyzer, Audio Analyzer), Telecom APIs, Banking Core, MHA webhook, NCRB portal, Mapping APIs. Data stores (running in demo): PostgreSQL 16, PostGIS 3.4, Neo4j 5, Redis 7, Kafka 3.6 KRaft, MinIO, OpenSearch 2. Observability: Prometheus + Grafana + Loki + Tempo. Production extensions shown in diagram as dashed/secondary: PgBouncer (connection pooling), Vault (secrets), ClamAV (malware scanning), Schema Registry (event validation), OTel Collector (trace routing). Show horizontal scaling boundaries (which services scale independently), the synchronous interdiction path (<300ms), the async Kafka event fan-out, and the HITL gate."*
 
 ---
 
@@ -808,6 +823,7 @@ Quantized counterfeit detection model:
 Produce docs/ml-evaluation-report.md containing:
 - Precision, Recall, F1 per model per risk category
 - Confusion matrices (at minimum scam NLP: HIGH/MEDIUM/LOW)
+- **Counterfeit CV — per-denomination accuracy breakdown** (₹50, ₹100, ₹200, ₹500, ₹2000 individually; do not report only a blended overall ≥80% — the hackathon brief's evaluation criterion explicitly calls out "accuracy across denominations and print quality"). Include a separate row for **print quality tiers** (clean/crisp, worn/faded, partial/damaged). A single blended number does not satisfy this criterion.
 - Fusion improvement: show that multi-source composite score outperforms best single model. This is a direct evaluation criterion under Innovation (25%) and Technical Excellence (20%).
 - Latency benchmarks: P50 and P99 per model
 - Known failure modes and mitigations
