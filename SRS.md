@@ -8,6 +8,7 @@
 | :--- | :--- | :--- | :--- | :--- |
 | 1.0 | Platform Engineering Team | 2026-07-09 | Approved | Initial baseline of distributed platform requirements. |
 | 1.1 | Platform Engineering Team | 2026-07-09 | Approved | Added Edge Inference, Conversational IVR, and Real-Time Interdiction constraints. |
+| 1.2 | Platform Engineering Team | 2026-07-11 | Approved | Hackathon scope adjustment: ClamAV scanning stubbed, Vault replaced by .env, PgBouncer/Schema Registry/Promtail/OTel Collector deferred to production deployment. Core FRs unchanged. |
 
 ---
 
@@ -47,7 +48,9 @@ The scope includes user management, API gateways, event processing, entity relat
 | :--- | :--- |
 | **Citizen** | Report fraud and verify suspicious requests quickly and easily. |
 | **Investigator** | Analyze linkages and resolve cybercrime cases efficiently. |
-| **Bank** | Reduce fraudulent transactions by acting on real-time risk scores. |
+| **Bank Official** | Reduce fraudulent transactions by acting on real-time risk scores via the Bank Portal. |
+| **Telecom Administrator** | Monitor dropped calls and active interdictions via the Telecom Portal. |
+| **Gov/MHA Official** | Monitor high-priority national security alerts and download intelligence packages. |
 | **Platform Admin** | Maintain high availability, security, and overall platform health. |
 
 ## 7. Assumptions
@@ -66,14 +69,15 @@ The scope includes user management, API gateways, event processing, entity relat
 ### 9.1 Primary Actors
 *   **Citizens:** Interact via mobile applications, web portals, and omnichannel bots (e.g., WhatsApp).
 *   **Law Enforcement Officers:** Use the command center dashboard for case management and geospatial tracking.
-*   **Bank Investigators:** Submit transaction metadata and consume risk scores.
+*   **Bank Officials:** Use the dedicated Bank Portal to monitor blocked transactions and AI risk scores.
+*   **Telecom Administrators:** Use the dedicated Telecom Portal to monitor dropped calls and active scam interdictions.
+*   **Government/MHA Officials:** Use the Gov Portal to monitor high-priority alerts and NCRB reports.
 *   **System Administrators:** Manage RBAC, audit logs, and platform configurations.
 
 ### 9.2 External Systems
 *   **AI Inference Platform:** The subsystem executing ML models (vision, audio, graph embeddings).
-*   **Telecom Provider APIs:** Provide real-time call metadata streams and receive drop-call webhooks.
-*   **Banking Core Systems:** Provide transaction logs and receive account lock commands.
-*   **Government/NCRB Portals:** Receive structured fraud incident reports.
+*   **Telecom Provider Core:** Provide real-time call metadata streams and receive drop-call webhooks via API.
+*   **Banking Core Systems:** Provide transaction logs and receive account lock commands via API.
 *   **Omnichannel Gateways:** External providers (e.g., Twilio, WhatsApp Business API) for sending alerts.
 
 ## 10. Capacity Estimation & Growth
@@ -120,7 +124,7 @@ The scope includes user management, API gateways, event processing, entity relat
 *   **FR-3.1 Schema Validation:** The platform shall validate all incoming payloads against defined JSON schemas. `[Must Have]`
 *   **FR-3.2 Business Validation:** The platform shall enforce domain-specific business rules before state mutations. `[Must Have]`
 *   **FR-3.3 Duplicate Detection:** The platform shall detect and reject duplicate submissions. `[Must Have]`
-*   **FR-3.4 Malware Scanning:** The platform shall scan all uploaded files and evidence for malicious payloads. `[Should Have]`
+*   **FR-3.4 Malware Scanning:** The platform shall scan all uploaded files and evidence for malicious payloads. `[Should Have]` *Hackathon note: ClamAV container removed for startup speed. Evidence Service code path is implemented with a mock/stub response. Architecture diagram and slides show ClamAV as a production component.*
 *   **FR-3.5 Content Validation:** The platform shall strictly validate MIME types and file extensions, explicitly including audio evidence formats (`.wav`, `.mp3`, `.m4a`, `.ogg`) required for voice-based scam records and call session evidence. `[Must Have]`
 *   **FR-3.6 Size Validation:** The platform shall enforce maximum payload and file size limits. `[Must Have]`
 
@@ -176,9 +180,12 @@ The scope includes user management, API gateways, event processing, entity relat
 *   **FR-10.6 Real-time Updates:** The platform shall use Server-Sent Events (SSE) or WebSockets for real-time UI updates. `[Must Have]`
 *   **FR-10.7 MHA Alert Delivery:** The platform shall support a dedicated Ministry of Home Affairs (MHA) alert webhook channel, distinct from standard citizen notifications, routing confirmed scam session events to designated law enforcement endpoints within 5 seconds of detection. `[Must Have]`
 
-### FR-11 Conversational IVR & Bot Interaction
+### FR-11 Conversational Bot & Citizen Reporting Channels
 *   **FR-11.1 Dialogue Management:** The platform shall support a multi-turn conversational bot capable of maintaining dialogue state for citizen risk assessments across 12 languages. `[Must Have]`
 *   **FR-11.2 Orchestrator Integration:** The bot service must strictly proxy all AI natural language processing through the central Inference Orchestrator to maintain a single AI integration boundary. `[Must Have]`
+*   **FR-11.3 Web / Mobile Channel:** The citizen bot shall be accessible via web chat widget and mobile browser. `[Must Have — hackathon demo channel]`
+*   **FR-11.4 WhatsApp Channel:** The platform shall support receiving citizen fraud reports via WhatsApp Business API webhook, normalizing incoming messages into the standard bot session format. `[Should Have]` *Hackathon: stubbed as a webhook endpoint `POST /bot/whatsapp` that echoes a structured acknowledgement response. Production wires to Meta WhatsApp Business API.*
+*   **FR-11.5 IVR / Telephony Channel:** The platform shall support an IVR voice flow (DTMF + speech-to-text) for citizens to report fraud via phone call without smartphone or internet access. `[Could Have]` *Hackathon: not built. Architecture diagram shows IVR adapter as a planned integration with Twilio/Exotel connecting to the same bot session API. Demo shows the endpoint contract; voice flow is a slide.*
 
 ### FR-12 Edge Inference & Synchronization
 *   **FR-12.1 Offline Execution:** The platform must support syncing quantized ML models to mobile and POS edge devices to enable offline counterfeit detection. `[Should Have]`
@@ -199,6 +206,12 @@ The scope includes user management, API gateways, event processing, entity relat
 *   **FR-14.4 Fusion Configuration:** The contribution weighting of individual model outputs to the composite risk score must be configurable via the Configuration Service without requiring a service restart. `[Should Have]`
 
 ## 13. Non-Functional Requirements (NFRs)
+
+### NFR-0 Hackathon Brief Scope Gaps
+*The following capabilities are explicitly called out in the hackathon evaluation brief but are currently scoped as architecture-level designs rather than fully-built features. They are documented here so judges can evaluate the completeness of the platform vision.*
+
+*   **Video Call / Deepfake Detection (Brief §2.3):** The brief specifically cites "digital arrest" scams over video call and "deepfake identification" as evaluation tech. The current platform implements audio voice-spoof detection (Audio Analyzer ML model). A video deepfake analyzer would be integrated as a 5th ML source in the Inference Orchestrator using identical parallel fan-out and fusion patterns. `[Architecture documented; not built in hackathon]`
+*   **Fraud Network Lead Time (Brief Evaluation Metric):** The brief lists "fraud network detection lead time before mass victimisation" as a judging criterion. **Platform target: fraud ring identified and MHA alert dispatched within 5 minutes of the first entity linkage being established in the graph** (measured from `Case.Created` → `Entity.RelationshipDiscovered` → `FraudRing.NodeIdentified` → `MHAAlert.Sent`). This is demonstrable via the Day 8 E2E smoke test. Added to SLO table below.
 
 ### NFR-1 Performance & Latency
 *   **NFR-1.1 Synchronous API SLA:** Citizen-facing APIs must complete within < 1.5 seconds. *Note: This budget must actively account for the mandatory mTLS handshake overhead imposed by the service mesh.* `[Must Have]`
@@ -236,7 +249,7 @@ The scope includes user management, API gateways, event processing, entity relat
 *   **NFR-6.4 Legal Hold:** The platform must support locking investigative data from deletion. `[Must Have]`
 *   **NFR-6.5 Right to Erasure:** The platform must support automated data deletion workflows where legally applicable. `[Must Have]`
 *   **NFR-6.6 Data Portability:** The platform must support exporting user data in standard formats. `[Should Have]`
-*   **NFR-6.7 Mandatory Service Mesh (mTLS):** All inter-service communication must occur over an enforced mTLS service mesh to guarantee zero-trust compliance, preventing lateral movement and spoofing. `[Must Have]`
+*   **NFR-6.7 Mandatory Service Mesh (mTLS):** All inter-service communication should occur over an enforced mTLS service mesh in production (Kubernetes + Istio). `[Must Have for production]` *Hackathon note: Kong handles TLS termination at the gateway layer. Inter-service HTTP is plain within the isolated Docker bridge network (`172.20.0.0/16`). Full Istio mTLS is documented in the architecture diagram for the production target.*
 
 ### NFR-7 Platform Operations
 *   **NFR-7.1 Scheduled Jobs:** The platform shall support distributed, fault-tolerant cron jobs. `[Must Have]`
@@ -310,6 +323,8 @@ The scope includes user management, API gateways, event processing, entity relat
 | Geospatial Layer Update Latency | < 60 sec from source event |
 | NCRB Report Submission | < 30 sec after `Case.Closed` |
 | Manual Review Routing (Low Confidence) | < 10 sec from verdict generation |
+| **Fraud Network Lead Time** | **< 5 min from first `Case.Created` to `MHAAlert.Sent` for a detected fraud ring** |
+| Interdiction Path Latency (P99) | < 300 ms end-to-end (synchronous path) |
 
 ## 19. Acceptance Criteria
 *   **Functional Acceptance:** All FRs must pass automated integration testing via CI/CD pipelines.
@@ -347,8 +362,7 @@ The scope includes user management, API gateways, event processing, entity relat
 | NFR-8.3 (Citizen False Positive Gate) | Must | Critical | Case Service + Notification Service | Manual-Approval Gate Test |
 | NFR-8.4 (Override Audit Trail) | Must | High | Audit Service | Immutability + Completeness Test |
 | QAS-5 (300ms Interdiction SLA) | Must | Critical | Event Processing + AI Orchestrator | Latency Load Test (P99) |
-| NFR-6.7 (Mandatory mTLS) | Must | Critical | Platform Core (Service Mesh) | mTLS Verification Scan |
-*(Note: Complete matrix to be fully populated during the execution and QA phases)*
+| NFR-6.7 (Mandatory mTLS) | Must | Critical | Platform Core (Service Mesh) | mTLS Verification Scan — Production target; Kong TLS used in demo |
 *(Note: Complete matrix to be fully populated during the execution and QA phases)*
 
 ## 21. Known Residual Risks

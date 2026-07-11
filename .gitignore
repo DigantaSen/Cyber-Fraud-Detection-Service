@@ -1,0 +1,100 @@
+# ============================================================
+# SECURITY — Never commit these
+# ============================================================
+.env
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+infra/postgres/data/
+infra/postgis/data/
+infra/neo4j/data/
+infra/redis/data/
+infra/opensearch/data/
+infra/minio/data/
+infra/kafka/data/
+infra/grafana/data/
+infra/loki/data/
+infra/tempo/data/
+
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+env/
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.prof
+
+# ============================================================
+# ML / Data Science — NEVER commit model weights or datasets
+# ============================================================
+*.h5
+*.pkl
+*.joblib
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.pb
+*.bin
+data/raw/
+data/processed/
+datasets/
+*.csv
+*.parquet
+*.jsonl
+*.tfrecord
+mlruns/
+wandb/
+.neptune/
+
+# ============================================================
+# Node / Frontend
+# ============================================================
+node_modules/
+.next/
+dist/
+.nuxt/
+*.tsbuildinfo
+
+# ============================================================
+# Build artifacts
+# ============================================================
+*.log
+*.tmp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*.bak
+
+# ============================================================
+# DB dumps — never commit
+# ============================================================
+*.sql.gz
+*.dump
+*.dmp
+dump.rdb
+
+# ============================================================
+# Evidence uploads (local dev artifacts)
+# ============================================================
+uploads/
+evidence_files/
