@@ -81,9 +81,14 @@ create_topic "user.login.failed" $AUTH_TTL
 
 # Telecom / Interdiction topics — 3 days (high volume, short retention)
 TELECOM_TTL=$((3 * 24 * 60 * 60 * 1000))
+create_topic "telecom.event.ingested" $TELECOM_TTL
 create_topic "callsession.initiated"  $TELECOM_TTL
 create_topic "callsession.flagged"    $TELECOM_TTL
 create_topic "intervention.requested" $TELECOM_TTL
+
+# Bank transaction topics - 7 days
+TXN_TTL=$((7 * 24 * 60 * 60 * 1000))
+create_topic "transaction.ingested" $TXN_TTL
 
 # Geospatial topics — 7 days
 GEO_TTL=$((7 * 24 * 60 * 60 * 1000))
@@ -98,7 +103,8 @@ create_topic "intelligence.package.generated" $REPORT_TTL
 # DLQ topics — 7 days (for inspection and replay)
 DLQ_TTL=$((7 * 24 * 60 * 60 * 1000))
 for topic in case.created case.updated evidence.uploaded prediction.completed \
-             notification.requested audit.recorded callsession.initiated; do
+             notification.requested audit.recorded telecom.event.ingested \
+             transaction.ingested callsession.initiated; do
   create_topic "${topic}.DLQ" $DLQ_TTL
 done
 

@@ -88,12 +88,14 @@ kong-validate: ## Validate kong.yml before reloading
 
 
 opensearch-index: ## Create the local case and evidence indexes if absent
-	@for index in case_index evidence_index; do \
-		curl -fsS http://localhost:9200/$$index > /dev/null || \
-		curl -fsS -X PUT http://localhost:9200/$$index \
+	@curl -fsS http://localhost:9200/case_index > /dev/null || \
+		curl -fsS -X PUT http://localhost:9200/case_index \
 			-H 'Content-Type: application/json' \
-			-d '{"settings":{"number_of_shards":1,"number_of_replicas":0}}'; \
-	done
+			--data-binary @infra/opensearch/case_index.json
+	@curl -fsS http://localhost:9200/evidence_index > /dev/null || \
+		curl -fsS -X PUT http://localhost:9200/evidence_index \
+			-H 'Content-Type: application/json' \
+			--data-binary @infra/opensearch/evidence_index.json
 
 opensearch-health: ## Check OpenSearch cluster health
 	curl -s http://localhost:9200/_cluster/health | python -m json.tool
