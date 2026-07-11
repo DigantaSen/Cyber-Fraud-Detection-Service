@@ -1,0 +1,52 @@
+{
+  "case_index": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "dynamic": "false",
+      "properties": {
+        "caseId": { "type": "keyword" },
+        "title": { "type": "text" },
+        "description": { "type": "text", "analyzer": "standard" },
+        "notes": { "type": "text", "analyzer": "standard" },
+        "status": { "type": "keyword" },
+        "riskTier": { "type": "keyword" },
+        "confidence": { "type": "float" },
+        "fusedScore": { "type": "float" },
+        "jurisdictionId": { "type": "keyword" },
+        "assignedInvestigator": { "type": "keyword" },
+        "reporterPhone": { "type": "keyword" },
+        "complaintLocation": { "type": "geo_point" },
+        "reporterEntityName": {
+          "type": "text",
+          "fields": {
+            "keyword": { "type": "keyword" }
+          }
+        },
+        "createdAt": { "type": "date" },
+        "updatedAt": { "type": "date" }
+      }
+    }
+  },
+  "evidence_index": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "dynamic": "false",
+      "properties": {
+        "evidenceId": { "type": "keyword" },
+        "caseId": { "type": "keyword" },
+        "fileName": { "type": "text" },
+        "mimeType": { "type": "keyword" },
+        "sha256": { "type": "keyword" },
+        "fileSize": { "type": "long" },
+        "uploadedBy": { "type": "keyword" },
+        "createdAt": { "type": "date" }
+      }
+    }
+  }
+}

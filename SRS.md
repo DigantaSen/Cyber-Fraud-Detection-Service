@@ -293,6 +293,8 @@ The scope includes user management, API gateways, event processing, entity relat
 *   `IntelligencePackage.Generated`
 *   `Audit.Recorded`
 *   `Report.Generated`
+*   `TelecomEvent.Ingested`
+*   `Transaction.Ingested`
 
 ## 16. External Interfaces
 *   **REST/JSON:** Primary interface for Web/Mobile clients.
