@@ -114,6 +114,31 @@ Ingest bank transaction event. Async path.
 
 ---
 
+### POST /events/counterfeit-scan
+Ingest offline counterfeit scan from edge POS device (FR-12).
+
+**Headers:** `X-HMAC-Signature: sha256=<hex>`
+
+**Request:**
+```json
+{
+  "scanId": "SCAN-9876",
+  "deviceFingerprint": "POS-MUMBAI-12",
+  "scannedAt": "2026-07-11T10:15:00Z",
+  "denomination": 500,
+  "edgeScore": 82,
+  "isAuthentic": false,
+  "location": {"lat": 19.076, "lon": 72.877},
+  "metadata": {"operatorId": "OP-123"}
+}
+```
+
+**Response 202:** `{"data": {"acknowledged": true, "eventId": "uuid"}}`
+
+**Events published:** `CounterfeitScan.Submitted`
+
+---
+
 ### POST /events/interdict
 **Synchronous interdiction path (<300ms SLA — T15).**
 Bypasses Kafka entirely. Telecom system calls this for real-time scam call intervention.
