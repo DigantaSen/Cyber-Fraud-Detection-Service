@@ -16,22 +16,22 @@ class Settings(BaseSettings):
     SERVICE_VERSION: str = "0.1.0"
 
     # ── PostgreSQL (via PgBouncer) ─────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://platform_user:change_me_postgres@pgbouncer:5432/platform"
+    DATABASE_URL: str = "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
 
     # ── Redis ─────────────────────────────────────────────────
     REDIS_URL: str = "redis://:change_me_redis@redis:6379/0"
 
     # ── Kafka ─────────────────────────────────────────────────
     KAFKA_BOOTSTRAP_SERVERS: str = "kafka:9092"
-    KAFKA_SCHEMA_REGISTRY_URL: str = "http://schema-registry:8081"
+    KAFKA_SCHEMA_REGISTRY_URL: str = ""
 
     # ── Vault ─────────────────────────────────────────────────
-    VAULT_ADDR: str = "http://vault:8200"
-    VAULT_TOKEN: str = "change_me_vault_root_token"
+    VAULT_ADDR: str = ""
+    VAULT_TOKEN: str = ""
 
     # ── Observability ──────────────────────────────────────────
-    # Services send telemetry to OTel Collector, NOT directly to Tempo
-    OTEL_ENDPOINT: str = "http://otel-collector:4317"   # gRPC port on collector
+    # Services send telemetry directly to Tempo in local docker-compose
+    OTEL_ENDPOINT: str = "http://tempo:4317"   # gRPC port on Tempo
     LOG_LEVEL: str = "INFO"
 
     # ── JWT (RS256 — public key for validation) ───────────────

@@ -99,8 +99,11 @@ async def correlation_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
 
     # Bind trace context to logger for this request
+    span_context = trace.get_current_span().get_span_context()
+    otel_trace_id = f"{span_context.trace_id:032x}" if span_context.is_valid else "—"
     req_logger = logger.bind(
-        trace_id=correlation_id,
+        trace_id=otel_trace_id,
+        correlation_id=correlation_id,
         request_id=request_id,
         method=request.method,
         path=request.url.path,
@@ -125,11 +128,12 @@ async def correlation_middleware(request: Request, call_next):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     correlation_id = request.headers.get("X-Correlation-ID", "unknown")
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    request_id = request.headers.get("X-Request-ID", "unknown")
+    logger.exception(f"Unhandled exception: {exc}")
     return JSONResponse(
         status_code=500,
         content={
-            "requestId": str(uuid.uuid4()),
+            "requestId": request_id,
             "correlationId": correlation_id,
             "errorCode": "INTERNAL_SERVER_ERROR",
             "message": "An unexpected error occurred.",

@@ -287,7 +287,7 @@ services:
   # MinIO — S3-Compatible Object Storage (evidence uploads)
   # ──────────────────────────────────────────────────────────
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2024-06-12T18-34-04Z
     container_name: platform-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -310,7 +310,7 @@ services:
 
   # ── MinIO Init (creates buckets on first run) ─────────────
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2024-06-12T18-34-04Z
     container_name: platform-minio-init
     depends_on:
       minio:

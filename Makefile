@@ -12,7 +12,7 @@
 
 up: ## Start all infrastructure services
 	@echo "Starting platform infrastructure..."
-	@cp -n .env.example .env 2>/dev/null || true
+	@[ -f .env ] || cp .env.example .env
 	docker compose up -d --build
 	@echo ""
 	@echo "Waiting for all services to be healthy..."

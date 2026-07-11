@@ -39,7 +39,7 @@ Open a **new PowerShell terminal** inside VS Code (`` Ctrl+` ``) and confirm you
 ```powershell
 # You should see this path
 pwd
-# C:\Users\digan\VSCode\Hackathons\AI_Fraud_Detection_System
+# C:\path\to\AI_Fraud_Detection_System
 
 # Confirm docker-compose.yml is here
 Test-Path docker-compose.yml
@@ -113,7 +113,7 @@ while ($true) {
 Creates all **29 domain event topics** with 12 partitions each and tiered retention (Case: 7 days, Audit: 30 days, Predictions: 14 days).
 
 ```powershell
-docker compose exec kafka /bin/bash /opt/bitnami/kafka/infra/kafka/provision-topics.sh
+docker compose exec kafka /bin/bash /infra/kafka/provision-topics.sh
 ```
 
 > If the script isn't found inside the container yet, run it from the host instead:
