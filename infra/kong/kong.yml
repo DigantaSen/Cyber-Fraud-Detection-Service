@@ -82,7 +82,7 @@ services:
 
   # Bank BFF
   - name: bank-bff
-    url: http://bank-bff:8000
+    url: http://department-bffs:8000
     routes:
       - name: bank-routes
         paths:
@@ -97,7 +97,7 @@ services:
 
   # Telecom BFF
   - name: telecom-bff
-    url: http://telecom-bff:8000
+    url: http://department-bffs:8000
     routes:
       - name: telecom-routes
         paths:
@@ -112,7 +112,7 @@ services:
 
   # Gov BFF
   - name: gov-bff
-    url: http://gov-bff:8000
+    url: http://department-bffs:8000
     routes:
       - name: gov-routes
         paths:
