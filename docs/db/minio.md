@@ -6,6 +6,7 @@ This document outlines the MinIO buckets used by the platform for object storage
 |---|---|---|
 | `evidence` | Evidence Service | Stores uploaded evidence objects (images, pdfs, audio files). Referenced by `evidence.evidence.minio_bucket`. |
 | `reports` | Reporting Service | Stores generated report artifacts and GeoJSON exports. Referenced by `reporting.reports.minio_bucket`. |
+| `edge-models` | ML Service | Public download bucket for edge-deployable quantized ML models. |
 
 ## Policies
 - Objects in these buckets are immutable. 

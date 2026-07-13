@@ -28,7 +28,7 @@ Create your task branch (example for Citizen/Bank UIs or BFFs)
 ```bash
 git checkout -b feature/Surjit-citizen-ui
 # OR
-git checkout -b feature/Surjit-bank-bff
+git checkout -b feature/Surjit-citizen-bff
 ```
 
 Work on your task.
@@ -97,6 +97,12 @@ T3
 docs(db): complete T3 database schema
 ```
 
+T8b
+
+```
+feat(kafka): complete T8b event processing backbone
+```
+
 T4c
 
 ```
@@ -119,6 +125,12 @@ T5a
 feat(case): complete T5a case service
 ```
 
+T4b
+
+```
+feat(citizen-bff): complete T4b gateway
+```
+
 T5d & T5e
 
 ```
@@ -133,6 +145,12 @@ T6a
 
 ```
 feat(evidence): complete T6a evidence service
+```
+
+T6d
+
+```
+feat(investigator-bff): complete T6d gateway
 ```
 
 T5f
@@ -180,6 +198,8 @@ develop → main
 Tag Release
 
 ```
+v0.1.0-alpha
+v0.3.0-alpha
 v0.5.0-beta
 v0.9.0-rc
 v1.0.0

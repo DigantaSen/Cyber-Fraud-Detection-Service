@@ -78,6 +78,42 @@
 
 ---
 
+### Quick Lookup Index
+Tasks below are presented in **topological execution order** (Wave 1 to Wave 9). Use this index to quickly locate a task by its original ID.
+
+| Task | Wave | Owner | Purpose |
+|---|---|---|---|
+| **T1** | Wave 1 (Design) | Diganta | Repo & Production Docker Compose setup |
+| **T2** | Wave 1 (Design) | Diganta | API Contracts for all 15 services |
+| **T3** | Wave 1 (Design) | Diganta | DB Schemas (Postgres, Neo4j, PostGIS, Kafka, OpenSearch) |
+| **T3b** | Wave 1 (Design) | Diganta | Sequence Diagrams for core flows |
+| **T3c** | Wave 1 (Design) | Diganta | Design Sign-off & Doc Freeze |
+| **T4** | Wave 2 (Core) | Surjit | Auth / Identity Service (JWT, RBAC) |
+| **T4b** | Wave 5 (BFFs) | Surjit | Citizen BFF (Gateway for Citizen UI) |
+| **T4c** | Wave 5 (BFFs) | Diganta | Department BFFs (Bank, Telecom, Gov Gateways) |
+| **T5a** | Wave 2 (Core) | Surjit | Case Service (Core Domain API) |
+| **T5b** | Wave 2 (Core) | Surjit | Conversational Bot Service |
+| **T5c** | Wave 6 (UIs) | Surjit | Citizen UI + Bot Chat Interface |
+| **T5d** | Wave 6 (UIs) | Surjit | Telecom Administrator UI |
+| **T5e** | Wave 6 (UIs) | Surjit | Bank Official UI |
+| **T5f** | Wave 6 (UIs) | Nilkanta | Gov / MHA Portal UI |
+| **T6a** | Wave 2 (Core) | Nilkanta | Evidence Service (Secure Upload, Hash) |
+| **T6b** | Wave 2 (Core) | Nilkanta | Reporting Service + Intelligence Package |
+| **T6c** | Wave 6 (UIs) | Nilkanta | Investigator Dashboard UI |
+| **T6d** | Wave 5 (BFFs) | Nilkanta | Investigator BFF (Gateway for Dashboard) |
+| **T7** | Wave 3 (Async) | Diganta | Audit Service (Immutable Ledger) |
+| **T8** | Wave 4 (Orchestrate)| Diganta | Inference Orchestrator (Multi-source Fusion) |
+| **T8b** | Wave 2 (Core) | Diganta | Event Processing Service + Kafka Backbone |
+| **T8c** | Wave 3 (Async) | Nilkanta | Entity Graph Service (Neo4j linkage) |
+| **T8d** | Wave 3 (Async) | Nilkanta | Geospatial Intelligence Service (PostGIS) |
+| **T8e** | Wave 3 (Async) | Nilkanta | Notification Service (MHA Alerts) |
+| **T8f** | Wave 3 (Async) | Diganta | Search Service (OpenSearch CQRS) |
+| **T9-T12b**| Wave 7 (ML) | Kushal | ML Prep, Models, Explainability, Edge |
+| **T13-T16**| Wave 8 (Integrate)| Diganta | Fusion, HITL, Interdiction, E2E Testing |
+| **T17-T21**| Wave 9 (Wrap-up)| All | System Tests, Bug Fixes, Deployment, Pitch |
+
+---
+
 ### T1 — Repo & Production Docker Compose
 - **Purpose:** Give every member a fully production-equivalent local environment from Day 1. No simplified substitutes.
 - **Depends On:** Nothing. [CRITICAL PATH START]
@@ -128,88 +164,10 @@
 
 ---
 
-### T4 — Auth / Identity Service
-- **Purpose:** User context needed by every feature. | **Depends On:** T3c. **Unlocks:** T4b, T5a, T6c.
-- **Deliverable:** POST /auth/login, /auth/register, /auth/refresh, /auth/mfa/verify. JWT (RS256), RBAC claims in token (role, orgId, jurisdictionId). JWT denylist in Redis. TOTP MFA via `pyotp`. Reads secrets from `.env` (hackathon) / Vault (production).
-- **Effort:** 4h | **Owner:** Surjit
-
-### T4b — Citizen BFF
-- **Purpose:** Single entry point for the Citizen UI — aggregates Case Service + Bot + Orchestrator stub. Shields frontend from service topology changes. | **Depends On:** T4, T5a, T5b. **Unlocks:** T5c, T16.
-- **Deliverable:** FastAPI gateway service at `/api/v1/citizen/`. Proxies and aggregates: `POST /citizen/report` → Case Service (which triggers Orchestrator asynchronously). `POST /citizen/bot/message` → Bot Service. `GET /citizen/cases/:id` → Case Service + Prediction status. Injects `correlationId` and `X-User-Context` into every downstream call. Rate limit: 60 req/min per user (configured in Kong). **Stateless — scales independently from all downstream services.**
-- **Effort:** 4h | **Owner:** Surjit
-
-### T4c — Bank, Telecom, and Gov BFFs
-- **Purpose:** API Gateways for the Bank, Telecom, and Gov portals. | **Depends On:** T4, T8b, T6b. **Unlocks:** T5d, T5e, T5f.
-- **Deliverable:** 3 lightweight FastAPI gateways serving `/api/v1/bank/`, `/api/v1/telecom/`, and `/api/v1/gov/`. Routes to Event Processing, Notification, and Reporting services.
-- **Effort:** 4h | **Owner:** Diganta
-
-### T5a — Case Service
-- **Purpose:** Core domain — every flow anchors to a Case. | **Depends On:** T4, T3c. **Unlocks:** T5c, T13, T13b.
-- **Deliverable:** POST /cases, GET /cases/:id, PATCH /cases/:id/state, PATCH /cases/:id/verdict/override, GET /cases/:id/timeline (cursor-paginated). State machine enforced: `New→Assigned→Investigating→Pending_AI→Action_Taken→Closed`. **Additional valid transition: `Pending_AI→Investigating` — triggered by the Orchestrator calling PATCH /cases/:id/state with `{state: 'Investigating', reason: 'AI_TIMEOUT'}` when a prediction returns INCOMPLETE status (FR-7.1).** Outbox pattern for Case.Created, Case.Updated. Mocks ML verdict until T13. **asyncpg connection pool size: min=5, max=20 per pod replica.**
-- **Effort:** 2 days | **Owner:** Surjit — [CRITICAL PATH]
-
-### T5b — Conversational Bot Service
-- **Purpose:** Multi-channel citizen risk assessment. | **Depends On:** T5a, T3c. **Unlocks:** T5c.
-- **Deliverable:** POST /bot/message, GET /bot/session/:id. Multi-turn session state in Redis (TTL 30m). Proxies NLP through Inference Orchestrator (stub until T13). **Supports 12 Indian regional languages (language detection via `langdetect`; language tag forwarded in the Orchestrator request so Kushal's NLP model returns language-appropriate response — FR-11.1).** Session key pattern: `bot:session:{sessionId}:lang={lang_code}`.
-- **Effort:** 1.5 days | **Owner:** Surjit
-
-### T5c — Citizen UI + Bot Interface
-- **Purpose:** Citizen-facing frontend. | **Depends On:** T5a, T5b. **Unlocks:** T16.
-- **Deliverable:** Report submission form (POST /cases), risk verdict display with confidence + explanation + HITL status, bot chat widget (POST /bot/message). Built in a Vite Monorepo workspace.
-- **Effort:** 2 days | **Owner:** Surjit
-
-### T5d — Telecom Administrator UI
-- **Purpose:** Dashboard for telecom partners to see dropped calls. | **Depends On:** T4c, T5c (Monorepo setup).
-- **Deliverable:** Single-page React app connecting to Telecom BFF via SSE. Shows a rolling log of active call sessions and interdiction alerts.
-- **Effort:** 1 day | **Owner:** Surjit
-
-### T5e — Bank Official UI
-- **Purpose:** Dashboard for bank officials. | **Depends On:** T4c, T5c (Monorepo setup).
-- **Deliverable:** Single-page React app connecting to Bank BFF. Shows blocked transactions with exact AI risk scores.
-- **Effort:** 1 day | **Owner:** Surjit
-
-### T5f — Gov / MHA Portal
-- **Purpose:** Government dashboard for MHA alerts and NCRB reports. | **Depends On:** T4c, T5c (Monorepo setup).
-- **Deliverable:** Single-page React app connecting to Gov BFF. Shows incoming MHA webhook alerts and NCRB intelligence packages.
-- **Effort:** 1 day | **Owner:** Nilkanta
-
----
-
-### T6a — Evidence Service
-- **Purpose:** Secure upload with cryptographic integrity. | **Depends On:** T3c. **Unlocks:** T6b, T16.
-- **Deliverable:** POST /cases/:id/evidence (returns MinIO presigned PUT URL — client uploads directly, bypassing the API server), POST /evidence/:id/confirm (client confirms upload; service validates MIME, runs SHA-256), GET /evidence/:id, GET /evidence/:id/hash. SHA-256 hash stored (FR-8.3). MIME validation: image/png, image/jpeg, application/pdf, audio/wav, audio/mpeg, audio/m4a (FR-3.5). **Malware scanning (FR-3.4 — stubbed for hackathon):** After MinIO upload confirmed, the code path calls a `scan_file()` function that returns a mocked `{clean: true}` response. The function signature matches the production ClamAV interface (`python-clamd`) so swapping in real ClamAV requires only changing the implementation, not callers. Publishes Evidence.Uploaded via outbox.
-- **Effort:** 2 days | **Owner:** Nilkanta
-### T6b — Reporting Service + Intelligence Package
-- **Purpose:** NCRB reports and court-admissible intelligence packages. | **Depends On:** T6a, T3c. **Unlocks:** T16.
-- **Deliverable:** POST /reports/ncrb, POST /reports/intelligence-package, GET /reports/:id. Intelligence package is a cryptographically signed bundle: case record + evidence hashes + Neo4j graph export + AI audit trail + chain-of-custody log. **Signing mechanism (FR-8.5):** Compute SHA-256 of the canonical JSON bundle, then sign the digest using the RS256 private key loaded from environment variable `SIGNING_PRIVATE_KEY`. Return `{packageId, signatureAlgorithm: 'RS256', signature: base64, publicKeyFingerprint}` so any recipient can independently verify integrity. Publishes Report.Generated, IntelligencePackage.Generated.
-- **Effort:** 1.5 days | **Owner:** Nilkanta
-
-### T6c — Investigator Dashboard UI
-- **Purpose:** Full investigator interface — case queue, graph viz, geo heatmap, HITL panel. | **Depends On:** T6a, T6b, T8c, T8d, T3c. **Unlocks:** T16.
-- **Deliverable:** Case list (SSE real-time updates), case detail (AI verdict, confidence, model breakdown, HITL panel with approve/reject + mandatory justification), entity graph visualization, geospatial heatmap, intelligence package button.
-- **Effort:** 2 days | **Owner:** Nilkanta — [Tight schedule: Day 6 afternoon + Day 7. Cut polish/animations if behind; HITL panel + graph viz + geo heatmap are the non-negotiable demo features]
-
-### T6d — Investigator BFF
-- **Purpose:** Single entry point for the Investigator UI — aggregates Case, Evidence, Graph, Geo, Search, Reporting. | **Depends On:** T4, T5a, T6a, T8c, T8d. **Unlocks:** T6c, T16.
-- **Deliverable:** FastAPI gateway at `/api/v1/investigator/`. Aggregates: `GET /investigator/cases` → Search Service (OpenSearch). `GET /investigator/cases/:id` → Case + FusedVerdict + Evidence list + Graph linkages (parallel with `asyncio.gather`). `POST /investigator/cases/:id/override` → Case Service. `GET /investigator/cases/:id/geo` → Geospatial Service. Injects `correlationId` + RBAC `jurisdictionId` scope into every downstream call. **Stateless — the aggregation fan-out using `asyncio.gather` ensures that adding more data sources only adds parallelism, not latency.**
-- **Effort:** 4h | **Owner:** Nilkanta
-
----
-
-### T7 — Audit Service
-- **Purpose:** Immutable ledger — legal admissibility (NFR-6.1). | **Depends On:** T3c, T8b. **Unlocks:** T16, T6b.
-- **Deliverable:** Kafka consumer on all state-change events. Append-only PostgreSQL audit_log (no UPDATE/DELETE). GET /audit/case/:id.
-- **Effort:** 1 day | **Owner:** Diganta
-
-### T8 — Inference Orchestrator Service
-- **Purpose:** Parallel multi-source AI dispatch, fusion, HITL routing. Most architecturally complex service.
-- **Depends On:** T3c, T8b. **Unlocks:** T13, T5b, T13b.
-- **Deliverable:** POST /inference/analyze — parallel fan-out to all enabled ML APIs (configurable via feature flags), applies fusion weights, returns {fusedScore, riskTier, confidence, modelBreakdown[], explanation, status: COMPLETE|INCOMPLETE|PENDING_REVIEW}. Per-model timeout 2s. Low-confidence -> suppresses automated actions. Partial failure -> INCOMPLETE verdict. Persists explainability metadata. Publishes Prediction.Requested, Prediction.Completed, Prediction.Failed.
-- **Effort:** 2 days | **Owner:** Diganta — [CRITICAL PATH]
-
 ### T8b — Event Processing Service + Kafka Backbone
 - **Purpose:** Async nervous system. Must be live before any service publishes events.
 - **Depends On:** T1, T3c. **Unlocks:** T7, T8, T8c, T8d, T8e, T8f.
+- **Docs:** [api/event-processing.md](docs/api/event-processing.md), [db/kafka.md](docs/db/kafka.md)
 - **Deliverable:**
   - **Kafka topics provisioned:** All topics from T3 schema — **12 partitions per topic**, retention by type. Script in `/infra/kafka/provision-topics.sh`.
   - **Transactional Outbox Publisher:** PostgreSQL `LISTEN/NOTIFY` trigger for low-latency outbox signaling. Publisher uses `kafka-python` with idempotent producer (`enable.idempotence=true`, `acks=all`). **Scalability note: publisher is a dedicated pod — does not share thread pool with API serving.**
@@ -218,23 +176,57 @@
   - **Synchronous interdiction pass-through:** HTTP endpoint that bypasses Kafka entirely for the <300ms path (T15).
 - **Effort:** 1.5 days | **Owner:** Diganta
 
+### T4 — Auth / Identity Service
+- **Purpose:** User context needed by every feature. | **Depends On:** T3c. **Unlocks:** T4b, T5a, T6c.
+- **Docs:** [api/auth.md](docs/api/auth.md), [db/postgres.sql](docs/db/postgres.sql), [db/redis.md](docs/db/redis.md)
+- **Deliverable:** POST /auth/login, /auth/register, /auth/refresh, /auth/mfa/verify. JWT (RS256), RBAC claims in token (role, orgId, jurisdictionId). JWT denylist in Redis. TOTP MFA via `pyotp`. Reads secrets from `.env` (hackathon) / Vault (production).
+- **Effort:** 4h | **Owner:** Surjit
+
+### T5a — Case Service
+- **Purpose:** Core domain — every flow anchors to a Case. | **Depends On:** T4, T3c. **Unlocks:** T5c, T13, T13b.
+- **Docs:** [api/case.md](docs/api/case.md), [db/postgres.sql](docs/db/postgres.sql), [db/kafka.md](docs/db/kafka.md)
+- **Deliverable:** POST /cases, GET /cases/:id, PATCH /cases/:id/state, PATCH /cases/:id/verdict/override, GET /cases/:id/timeline (cursor-paginated). State machine enforced: `New→Assigned→Investigating→Pending_AI→Action_Taken→Closed`. **Additional valid transition: `Pending_AI→Investigating` — triggered by the Orchestrator calling PATCH /cases/:id/state with `{state: 'Investigating', reason: 'AI_TIMEOUT'}` when a prediction returns INCOMPLETE status (FR-7.1).** Outbox pattern for Case.Created, Case.Updated. Mocks ML verdict until T13. **asyncpg connection pool size: min=5, max=20 per pod replica.**
+- **Effort:** 2 days | **Owner:** Surjit — [CRITICAL PATH]
+
+### T5b — Conversational Bot Service
+- **Purpose:** Multi-channel citizen risk assessment. | **Depends On:** T5a, T3c. **Unlocks:** T5c.
+- **Docs:** [api/bot.md](docs/api/bot.md)
+- **Deliverable:** POST /bot/message, GET /bot/session/:id. Multi-turn session state in Redis (TTL 30m). Proxies NLP through Inference Orchestrator (stub until T13). **Supports 12 Indian regional languages (language detection via `langdetect`; language tag forwarded in the Orchestrator request so Kushal's NLP model returns language-appropriate response — FR-11.1).** Session key pattern: `bot:session:{sessionId}:lang={lang_code}`.
+- **Effort:** 1.5 days | **Owner:** Surjit
+
+### T6a — Evidence Service
+- **Purpose:** Secure upload with cryptographic integrity. | **Depends On:** T3c. **Unlocks:** T6b, T16.
+- **Docs:** [api/evidence.md](docs/api/evidence.md), [db/minio.md](docs/db/minio.md), [db/postgres.sql](docs/db/postgres.sql), [02-evidence-intelligence-package.md](docs/architecture/sequences/02-evidence-intelligence-package.md)
+- **Deliverable:** POST /cases/:id/evidence (returns MinIO presigned PUT URL — client uploads directly, bypassing the API server), POST /evidence/:id/confirm (client confirms upload; service validates MIME, runs SHA-256), GET /evidence/:id, GET /evidence/:id/hash. SHA-256 hash stored (FR-8.3). MIME validation: image/png, image/jpeg, application/pdf, audio/wav, audio/mpeg, audio/m4a (FR-3.5). **Malware scanning (FR-3.4 — stubbed for hackathon):** After MinIO upload confirmed, the code path calls a `scan_file()` function that returns a mocked `{clean: true}` response. The function signature matches the production ClamAV interface (`python-clamd`) so swapping in real ClamAV requires only changing the implementation, not callers. Publishes Evidence.Uploaded via outbox.
+- **Effort:** 2 days | **Owner:** Nilkanta
+
+### T6b — Reporting Service + Intelligence Package
+- **Purpose:** NCRB reports and court-admissible intelligence packages. | **Depends On:** T6a, T3c. **Unlocks:** T16.
+- **Docs:** [api/reporting.md](docs/api/reporting.md), [02-evidence-intelligence-package.md](docs/architecture/sequences/02-evidence-intelligence-package.md)
+- **Deliverable:** POST /reports/ncrb, POST /reports/intelligence-package, GET /reports/:id. Intelligence package is a cryptographically signed bundle: case record + evidence hashes + Neo4j graph export + AI audit trail + chain-of-custody log. **Signing mechanism (FR-8.5):** Compute SHA-256 of the canonical JSON bundle, then sign the digest using the RS256 private key loaded from environment variable `SIGNING_PRIVATE_KEY`. Return `{packageId, signatureAlgorithm: 'RS256', signature: base64, publicKeyFingerprint}` so any recipient can independently verify integrity. Publishes Report.Generated, IntelligencePackage.Generated.
+- **Effort:** 1.5 days | **Owner:** Nilkanta
+
 ### T8c — Entity Graph Service
 - **Purpose:** Map fraud rings via linked entities. | **Depends On:** T3c, T8b. **Unlocks:** T6c, T16.
+- **Docs:** [api/graph.md](docs/api/graph.md), [db/neo4j.cypher](docs/db/neo4j.cypher), [01-citizen-report-hitl.md](docs/architecture/sequences/01-citizen-report-hitl.md)
 - **Deliverable:** GET /graph/linkages?entityId=, GET /graph/shortest-path?from=&to=. **Data Flow:** A background Kafka consumer constantly listens to `Case.Created`, `Prediction.Completed`, `TelecomEvent.Ingested`, and `Transaction.Ingested`. It mechanically builds a Neo4j graph using Cypher `MERGE` statements (e.g. `MERGE (a:Phone)-[:CALLED]->(b:Phone)`) to link disparate entities without manual intervention. The Orchestrator calls this API to fetch a 2-hop neighborhood to pass to the ML models. Publishes Entity.RelationshipDiscovered, FraudRing.NodeIdentified.
 - **Effort:** 1.5 days | **Owner:** Nilkanta
 
 ### T8d — Geospatial Intelligence Service
 - **Purpose:** Crime hotspot mapping, patrol APIs. | **Depends On:** T3c, T8b. **Unlocks:** T6c, T16.
+- **Docs:** [api/geospatial.md](docs/api/geospatial.md), [db/postgis.sql](docs/db/postgis.sql), [04-offline-counterfeit-sync.md](docs/architecture/sequences/04-offline-counterfeit-sync.md), [05-geospatial-dashboard-push.md](docs/architecture/sequences/05-geospatial-dashboard-push.md)
 - **Deliverable:** GET /geo/hotspots?bbox= (PostGIS bounding box, GeoJSON), GET /geo/patrol-zones?district=, POST /geo/export. **Data Flow:** A Kafka consumer continuously extracts `complaint_lat`/`complaint_lon` from `Case.Created` events and executes a PostGIS upsert (`ON CONFLICT DO UPDATE SET incident_count = incident_count + 1`) within 60s. The Investigator Dashboard queries this to render live Leaflet heatmaps, strictly RBAC-scoped by the officer's `jurisdictionId` JWT claim.
 - **Effort:** 1.5 days | **Owner:** Nilkanta
 
 ### T8e — Notification Service (with MHA Alert)
 - **Purpose:** Omnichannel alerting with dedicated MHA webhook (<5s SLO). | **Depends On:** T3c, T8b. **Unlocks:** T13c, T15, T16.
+- **Docs:** [api/notification.md](docs/api/notification.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md), [05-geospatial-dashboard-push.md](docs/architecture/sequences/05-geospatial-dashboard-push.md)
 - **Deliverable:** POST /notify/send (SMS/Email/Push — stubbed initially), POST /notify/mha-alert (high-priority queue, <5s SLO), GET /notify/preferences/:userId. SSE for real-time push. Publishes MHAAlert.Sent. **MHA channel uses a dedicated Kafka consumer group with highest priority — separate from standard citizen notification consumer to prevent head-of-line blocking.**
 - **Effort:** 1.5 days | **Owner:** Nilkanta
 
 ### T8f — Search Service (OpenSearch Kafka Consumer)
 - **Purpose:** CQRS read model for case + evidence search (FR-9). Indexes events into OpenSearch asynchronously — services query this instead of heavy PostgreSQL LIKE queries. | **Depends On:** T8b, T3c. **Unlocks:** T6c, T16.
+- **Docs:** [api/search.md](docs/api/search.md), [db/opensearch.json](docs/db/opensearch.json)
 - **Deliverable:**
   - FastAPI service with `GET /search/cases?q=&status=&riskTier=&from=&cursor=&limit=` — delegates to OpenSearch. Returns cursor-paginated results with facets (`{items[], nextCursor, facets: {status: {}, riskTier: {}}}`).
   - Kafka consumer on `Case.Created`, `Case.Updated`, `Evidence.Uploaded`, `Prediction.Completed` — upserts documents into `case_index` and `evidence_index` (OpenSearch `_index` with `_id=caseId`).
@@ -242,46 +234,115 @@
   - **Scalability:** OpenSearch horizontal scaling via shard routing (1 shard locally; 3 shards + 1 replica in production). Consumer group allows up to 12 pods to index in parallel (one per partition).
 - **Effort:** 1 day | **Owner:** Diganta
 
+### T7 — Audit Service
+- **Purpose:** Immutable ledger — legal admissibility (NFR-6.1). | **Depends On:** T3c, T8b. **Unlocks:** T16, T6b.
+- **Docs:** [api/audit.md](docs/api/audit.md), [db/postgres.sql](docs/db/postgres.sql), [06-investigator-override-audit.md](docs/architecture/sequences/06-investigator-override-audit.md)
+- **Deliverable:** Kafka consumer on all state-change events. Append-only PostgreSQL audit_log (no UPDATE/DELETE). GET /audit/case/:id.
+- **Effort:** 1 day | **Owner:** Diganta
+
+### T8 — Inference Orchestrator Service
+- **Purpose:** Parallel multi-source AI dispatch, fusion, HITL routing. Most architecturally complex service.
+- **Depends On:** T3c, T8b, T8c. **Unlocks:** T13, T5b, T13b.
+- **Docs:** [api/inference-orchestrator.md](docs/api/inference-orchestrator.md), [api/ml-contract.md](docs/api/ml-contract.md), [01-citizen-report-hitl.md](docs/architecture/sequences/01-citizen-report-hitl.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md), [db/redis.md](docs/db/redis.md)
+- **Deliverable:** POST /inference/analyze — parallel fan-out to all enabled ML APIs (configurable via feature flags), applies fusion weights, returns {fusedScore, riskTier, confidence, modelBreakdown[], explanation, status: COMPLETE|INCOMPLETE|PENDING_REVIEW}. Per-model timeout 2s. Low-confidence -> suppresses automated actions. Partial failure -> INCOMPLETE verdict. Persists explainability metadata. Publishes Prediction.Requested, Prediction.Completed, Prediction.Failed.
+- **Effort:** 2 days | **Owner:** Diganta — [CRITICAL PATH]
+
+### T4b — Citizen BFF
+- **Purpose:** Single entry point for the Citizen UI — aggregates Case Service + Bot + Orchestrator stub. Shields frontend from service topology changes. | **Depends On:** T4, T5a, T5b. **Unlocks:** T5c, T16.
+- **Docs:** [api/citizen-bff.md](docs/api/citizen-bff.md), [01-citizen-report-hitl.md](docs/architecture/sequences/01-citizen-report-hitl.md)
+- **Deliverable:** FastAPI gateway service at `/api/v1/citizen/`. Proxies and aggregates: `POST /citizen/report` → Case Service (which triggers Orchestrator asynchronously). `POST /citizen/bot/message` → Bot Service. `GET /citizen/cases/:id` → Case Service + Prediction status. Injects `correlationId` and `X-User-Context` into every downstream call. Rate limit: 60 req/min per user (configured in Kong). **Stateless — scales independently from all downstream services.**
+- **Effort:** 4h | **Owner:** Surjit
+
+### T4c — Bank, Telecom, and Gov BFFs
+- **Purpose:** API Gateways for the Bank, Telecom, and Gov portals. | **Depends On:** T4, T8b, T6b. **Unlocks:** T5d, T5e, T5f.
+- **Docs:** [api/department-bffs.md](docs/api/department-bffs.md)
+- **Deliverable:** 3 lightweight FastAPI gateways serving `/api/v1/bank/`, `/api/v1/telecom/`, and `/api/v1/gov/`. Routes to Event Processing, Notification, and Reporting services.
+- **Effort:** 4h | **Owner:** Diganta
+
+### T6d — Investigator BFF
+- **Purpose:** Single entry point for the Investigator UI — aggregates Case, Evidence, Graph, Geo, Search, Reporting. | **Depends On:** T4, T5a, T6a, T6b, T8c, T8d. **Unlocks:** T6c, T16.
+- **Docs:** [api/investigator-bff.md](docs/api/investigator-bff.md), [api/_shared_contract.md](docs/api/_shared_contract.md)
+- **Deliverable:** FastAPI gateway at `/api/v1/investigator/`. Aggregates: `GET /investigator/cases` → Search Service (OpenSearch). `GET /investigator/cases/:id` → Case + FusedVerdict + Evidence list + Graph linkages (parallel with `asyncio.gather`). `POST /investigator/cases/:id/override` → Case Service. `GET /investigator/cases/:id/geo` → Geospatial Service. `POST /investigator/reports/intelligence-package` → Reporting Service. Injects `correlationId` + RBAC `jurisdictionId` scope into every downstream call. **Stateless — the aggregation fan-out using `asyncio.gather` ensures that adding more data sources only adds parallelism, not latency.**
+- **Effort:** 4h | **Owner:** Nilkanta
+
+### T5c — Citizen UI + Bot Interface
+- **Purpose:** Citizen-facing frontend. | **Depends On:** T4b. **Unlocks:** T16.
+- **Docs:** [api/citizen-bff.md](docs/api/citizen-bff.md), [api/bot.md](docs/api/bot.md)
+- **Deliverable:** Report submission form (POST /citizen/report), risk verdict display with confidence + explanation + HITL status, bot chat widget (POST /citizen/bot/message). Built in a Vite Monorepo workspace.
+- **Effort:** 2 days | **Owner:** Surjit
+
+### T5d — Telecom Administrator UI
+- **Purpose:** Dashboard for telecom partners to see dropped calls. | **Depends On:** T4c, T5c (Monorepo setup).
+- **Docs:** [api/department-bffs.md](docs/api/department-bffs.md)
+- **Deliverable:** Single-page React app connecting to Telecom BFF via SSE. Shows a rolling log of active call sessions and interdiction alerts.
+- **Effort:** 1 day | **Owner:** Surjit
+
+### T5e — Bank Official UI
+- **Purpose:** Dashboard for bank officials. | **Depends On:** T4c, T5c (Monorepo setup).
+- **Docs:** [api/department-bffs.md](docs/api/department-bffs.md)
+- **Deliverable:** Single-page React app connecting to Bank BFF. Shows blocked transactions with exact AI risk scores.
+- **Effort:** 1 day | **Owner:** Surjit
+
+### T5f — Gov / MHA Portal
+- **Purpose:** Government dashboard for MHA alerts and NCRB reports. | **Depends On:** T4c, T5c (Monorepo setup).
+- **Docs:** [api/department-bffs.md](docs/api/department-bffs.md)
+- **Deliverable:** Single-page React app connecting to Gov BFF. Shows incoming MHA webhook alerts and NCRB intelligence packages.
+- **Effort:** 1 day | **Owner:** Nilkanta
+
+### T6c — Investigator Dashboard UI
+- **Purpose:** Full investigator interface — case queue, graph viz, geo heatmap, HITL panel. | **Depends On:** T6d, T3c. **Unlocks:** T16.
+- **Docs:** [api/investigator-bff.md](docs/api/investigator-bff.md), [05-geospatial-dashboard-push.md](docs/architecture/sequences/05-geospatial-dashboard-push.md)
+- **Deliverable:** Case list (SSE real-time updates), case detail (AI verdict, confidence, model breakdown, HITL panel with approve/reject + mandatory justification), entity graph visualization, geospatial heatmap, intelligence package button.
+- **Effort:** 2 days | **Owner:** Nilkanta — [Tight schedule: Day 6 afternoon + Day 7. Cut polish/animations if behind; HITL panel + graph viz + geo heatmap are the non-negotiable demo features]
+
 ---
 
 ### T9 — ML: Data Preparation (All 4 Model Types)
 - **Purpose:** Ground truth datasets and prompt/feature designs before writing stub code.
 - **Depends On:** T2 (needs ml-contract.md). Starts Day 1 independently of sign-off.
+- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md)
 - **Deliverable:** (1) Scam NLP: 50+ labeled complaint texts across 5 categories + prompt template + few-shot examples. (2) Counterfeit CV: currency security feature descriptions + image samples. (3) Graph Fraud: 3 synthetic fraud ring adjacency graphs with labeled fraud nodes. (4) Audio spoof: acoustic feature descriptions + sample clips.
 - **Effort:** 1 day | **Owner:** Kushal
 
 ### T10a — Scam NLP Classifier API
 - **Purpose:** Core scam classification. Stub must be live Day 2. | **Depends On:** T9, T2. **Unlocks:** T13.
+- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md), [01-citizen-report-hitl.md](docs/architecture/sequences/01-citizen-report-hitl.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md)
 - **Deliverable:** POST /ml/scam-classify -> {score:0-100, riskTier, category, confidence, signals[], explanation}.
 - **Effort:** 1.5 days | **Owner:** Kushal — [CRITICAL PATH — stub Day 2 EOD]
 
 ### T10b — Counterfeit CV Classifier API
 - **Purpose:** Currency image -> authenticity score. Basis for edge model. | **Depends On:** T9, T2. Stub Day 3.
+- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md), [04-offline-counterfeit-sync.md](docs/architecture/sequences/04-offline-counterfeit-sync.md)
 - **Deliverable:** POST /ml/counterfeit-detect (image/base64) -> {score, isAuthentic, confidence, detectedFeatures[], explanation}.
 - **Effort:** 2 days | **Owner:** Kushal
 
 ### T10c — Fraud Graph Analyzer API
 - **Purpose:** Entity graph -> fraud ring probability. | **Depends On:** T9, T2. Stub Day 3.
+- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md), [01-citizen-report-hitl.md](docs/architecture/sequences/01-citizen-report-hitl.md)
 - **Deliverable:** POST /ml/graph-analyze (adjacency JSON) -> {score, fraudRingProbability, suspiciousNodes[], explanation}.
 - **Effort:** 1.5 days | **Owner:** Kushal
 
 ### T10d — Audio Voice Analyzer API
 - **Purpose:** Detect AI-generated/spoofed voices. | **Depends On:** T9, T2. Stub Day 3.
+- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md)
 - **Deliverable:** POST /ml/audio-analyze (audio file) -> {score, isAISpoofed, confidence, voiceFeatures{pitchVariance, spectralEntropy}, explanation}.
 - **Effort:** 2 days | **Owner:** Kushal
 
 ### T11 — ML: Evaluation & Tuning (All Models)
 - **Purpose:** Hit acceptable precision/recall before integration freeze. | **Depends On:** T10a, T10b, T10c, T10d.
+- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md)
 - **Deliverable:** Evaluation report per model (precision, recall, F1 per category), refined prompts/features, threshold values for Orchestrator fusion config.
 - **Effort:** 2 days | **Owner:** Kushal
 
 ### T12 — ML: Explainability (All Models)
 - **Purpose:** Every verdict ships Surjit human-readable reason (NFR-8.2). | **Depends On:** T10a-T10d.
+- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md)
 - **Deliverable:** signals[] array + explanation string populated in all 4 APIs. 2-3 plain-English signal strings naming specific detected features.
 - **Effort:** 0.5 day | **Owner:** Kushal
 
 ### T12b — Quantized Edge Model (Offline Counterfeit Detection)
 - **Purpose:** TFLite/ONNX model for offline use on mobile and POS terminals (FR-12). | **Depends On:** T10b, T11. [Cut first if behind by Day 7]
+- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md)
 - **Deliverable:** counterfeit_detector.tflite or .onnx (<=10MB, INT8 quantized). Python inference wrapper.
 - **Effort:** 1 day | **Owner:** Kushal
 
@@ -290,17 +351,20 @@
 ### T13 — Multi-Source ML Fusion Integration
 - **Purpose:** Wire all 4 ML APIs into the Inference Orchestrator. Most architecturally significant integration.
 - **Depends On:** T8, T10a, T5a, T3b, T8c. **Unlocks:** T13b, T13c, T16.
+- **Docs:** [01-citizen-report-hitl.md](docs/architecture/sequences/01-citizen-report-hitl.md)
 - **Deliverable:** Case creation triggers POST /inference/analyze. **Data Flow (Anchor and Expand Strategy):** The Orchestrator acts as the middleman. It extracts the primary suspect's ID (e.g., phone number) from the raw complaint and uses it as an anchor to call T8c (`GET /graph/linkages?entityId={id}`). T8c executes a Cypher query to pull the exact 2-hop graph neighborhood surrounding that anchor. The Orchestrator bundles the complaint and this 2-hop sub-graph into a unified payload, then fans out this rich context to all 4 ML APIs in parallel using `asyncio.gather`. Finally, it computes a `fusedScore`, stores the complete `FusedVerdict` JSON (including model-level explanations), and publishes `Prediction.Completed`. INCOMPLETE + PENDING_REVIEW flows working.
 - **Effort:** 1 day | **Owner:** Diganta leads, Surjit pairs — [SYNC POINT #1 — Day 6]
 
 ### T13b — HITL Override Integration
 - **Purpose:** Low-confidence verdicts block automated actions and route to investigator (NFR-8.1/NFR-8.3).
 - **Depends On:** T13, T6c (HITL panel exists), T8e.
+- **Docs:** [06-investigator-override-audit.md](docs/architecture/sequences/06-investigator-override-audit.md)
 - **Deliverable:** Orchestrator emits PENDING_REVIEW -> Case enters Pending_AI -> notifications suppressed. PATCH /cases/:id/verdict/override: APPROVE resumes actions; REJECT archives case. Immutable OverrideRecord persisted. Prediction.Overridden -> Audit.
 - **Effort:** 4h | **Owner:** Diganta leads, Surjit (Case side), Nilkanta (dashboard panel)
 
 ### T13c — MHA Alert Integration
 - **Purpose:** HIGH-risk scam session -> MHA webhook within 5 seconds (FR-10.7). | **Depends On:** T13, T8e.
+- **Docs:** [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md)
 - **Deliverable:** Orchestrator on HIGH verdict for CallSession.Flagged calls POST /notify/mha-alert directly (bypasses standard queue). MHAAlert.Sent -> Audit. 5s SLO verified.
 - **Effort:** 3h | **Owner:** Diganta leads, Nilkanta (Notification side)
 
@@ -311,12 +375,14 @@
 
 ### T15 — Real-Time Interdiction Path (<300ms SLA)
 - **Purpose:** Block financial transfer before it executes (QAS-5). | **Depends On:** T8, T8b, T8e, T3b.
+- **Docs:** [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md)
 - **Deliverable:** Synchronous path bypassing Kafka: telecom event -> Event Processing -> Orchestrator -> ML (scam-nlp + audio) -> bank block stub -> MHA alert. P99 <300ms locally. `TelecomEvent.Ingested` published asynchronously to Kafka *after* response returns. Demo-able with simulated payload.
 - **Effort:** 1 day | **Owner:** Diganta — [High complexity; schedule buffer here]
 
 ### T16 — End-to-End Integration & Smoke Test
 - **Purpose:** Verify the full system works as one. | **Depends On:** T13, T13b, T13c, T14, T15.
 - [SYNC POINT #2 — Day 8, all 4]
+- **Docs:** [01-citizen-report-hitl.md](docs/architecture/sequences/01-citizen-report-hitl.md), [02-evidence-intelligence-package.md](docs/architecture/sequences/02-evidence-intelligence-package.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md), [04-offline-counterfeit-sync.md](docs/architecture/sequences/04-offline-counterfeit-sync.md), [05-geospatial-dashboard-push.md](docs/architecture/sequences/05-geospatial-dashboard-push.md), [06-investigator-override-audit.md](docs/architecture/sequences/06-investigator-override-audit.md)
 - **Deliverable:** Documented E2E run: (1) Citizen report -> HIGH verdict -> HITL gate -> approve -> MHA alert fires. (2) Evidence upload -> hash verified -> linked to case. (3) Dashboard shows graph linkages + geo hotspot. (4) Intelligence package generated with full audit trail.
 - **Effort:** 4h | **Owner:** Diganta leads, all 4 attend
 
@@ -340,7 +406,7 @@
 
 ### Critical Path
 T1 -> T2 -> T3c -> T5a -> T13 -> T16 -> T17 -> T18 -> T19 -> T21
-Parallel must-not-slip: T8 (Orchestrator) complete Day 5. T10a stub live Day 2. All 4 ML stubs live Day 3.
+Parallel must-not-slip: T8 (Orchestrator) complete Day 4. T10a stub live Day 2. All 4 ML stubs live Day 3.
 
 ---
 
@@ -359,13 +425,13 @@ Parallel must-not-slip: T8 (Orchestrator) complete Day 5. T10a stub live Day 2. 
 | Day | Date | Diganta | Surjit | Nilkanta | Kushal | Sync / Milestone |
 |---|---|---|---|---|---|---|
 | 1 | Sat Jul 11 | T1,T2,T3,T3b | Env setup, read all docs, ask clarifying Qs | Env setup, read all docs | T9: data prep all 4 models | EOD: T3c Design sign-off, all 4 |
-| 2 | Sun Jul 12 | T8b: Kafka, T4c: BFFs | T4: Auth/Identity | T6a: Evidence start | T10a: Scam NLP stub | EOD: T10a stub live |
+| 2 | Sun Jul 12 | T8b: Kafka | T4: Auth/Identity | T6a: Evidence start | T10a: Scam NLP stub | EOD: T10a stub live |
 | 3 | Mon Jul 13 | T8: Orchestrator start | T5a: Case Service start | T6a: Evidence finish, T8d: Geospatial start | T10b: CV stub, T10c: Graph stub | — |
 | 4 | Tue Jul 14 | T8: Orchestrator finish | T5a: Case Service finish | T8d: Geo finish, T8c: Entity Graph | T10d: Audio stub, T11: tuning starts | All 4 ML stubs live |
-| 5 | Wed Jul 15 | T7: Audit Service | T5b: Bot stub, T5c: Citizen UI start | T8e: Notification+MHA, T6b: Reporting start | T11: tuning, T12: explainability | Platform services complete |
+| 5 | Wed Jul 15 | T7: Audit Service | T5b: Bot stub, T4b: Citizen BFF, T5c start | T8e: Notification, T6d: Investigator BFF, T6b start | T11: tuning, T12: explainability | Platform services complete |
 | 6 | Thu Jul 16 | T13 lead, T13c: MHA alert | T5c: Citizen UI + Bot UI finish | T6b: Reporting finish, T6c: Dashboard start | T11 finalize, T12 all models | SYNC #1: Multi-source ML integration |
-| 7 | Fri Jul 17 | T13b: HITL, T15: interdiction path | T13b, T14 start, T5d: Telecom UI | T6c: Dashboard finish, T14 start | T12b: edge model start | — |
-| 8 | Sat Jul 18 | T16 lead: E2E smoke test | T14 finish, T16, T5e: Bank UI | T14 finish, T16, T5f: Gov UI | Support T16, T12b finish | SYNC #2: Full E2E verified, all 4 |
+| 7 | Fri Jul 17 | T13b: HITL, T15: interdiction | T13b, T14 start | T6c: Dashboard finish, T14 start | T12b: edge model start | — |
+| 8 | Sat Jul 18 | T16 lead: E2E smoke test, T4c: Dept BFFs | T14 finish, T16, T5d: Telecom UI, T5e: Bank UI | T14 finish, T16, T5f: Gov UI | Support T16, T12b finish | SYNC #2: Full E2E verified, all 4 |
 | 9 | Sun Jul 19 | T17: contract/integration/system tests | T17: citizen slice tests | T17: investigator slice tests | T17: ML validation (precision/recall) | — |
 | 10 | Mon Jul 20 | T18 coord, T19 deployment | T18: bug fixes | T18: bug fixes | Deck ML content | MILESTONE: Demo-ready deployed |
 | 11 | Tue Jul 21 | T20: full architecture diagram | T20: deck + video | T20: deck + video | T20: ML accuracy slides | — |
@@ -385,6 +451,7 @@ Parallel must-not-slip: T8 (Orchestrator) complete Day 5. T10a stub live Day 2. 
   bot/                     (Surjit)
   case/                    (Surjit)
   citizen-bff/             (Surjit)
+  department-bffs/         (Diganta)
   event-processing/        (Diganta)
   evidence/                (Nilkanta)
   geospatial/              (Nilkanta)
@@ -432,16 +499,19 @@ Parallel must-not-slip: T8 (Orchestrator) complete Day 5. T10a stub live Day 2. 
 | ml/graph-analyzer | Kushal | Day 3 (stub), Day 6 (real) |
 | ml/audio-analyzer | Kushal | Day 3 (stub), Day 6 (real) |
 | feature/Nilkanta-evidence | Nilkanta | Day 3 EOD |
-| feature/Surjit-case | Surjit | Day 5 EOD |
 | feature/Nilkanta-geo | Nilkanta | Day 4 EOD |
 | feature/Nilkanta-graph | Nilkanta | Day 4 EOD |
+| feature/Surjit-case | Surjit | Day 5 EOD |
 | feature/infra-orchestrator | Diganta | Day 5 EOD |
 | feature/infra-audit | Diganta | Day 5 EOD |
 | feature/Nilkanta-notification | Nilkanta | Day 5 EOD |
+| feature/Surjit-citizen-bff | Surjit | Day 5 EOD |
+| feature/Nilkanta-investigator-bff | Nilkanta | Day 5 EOD |
 | feature/Nilkanta-reporting | Nilkanta | Day 6 EOD |
 | feature/Surjit-bot | Surjit | Day 6 EOD |
 | feature/Surjit-citizen-ui | Surjit | Day 6 EOD |
 | feature/Nilkanta-dashboard | Nilkanta | Day 7 EOD |
+| feature/infra-department-bffs | Diganta | Day 7 EOD |
 | feature/infra-ml-integration | Diganta | Day 6 EOD |
 | feature/infra-hitl | Diganta | Day 7 EOD |
 | feature/infra-interdiction | Diganta | Day 7 EOD |
@@ -515,7 +585,7 @@ chore(release): tag v1.0.0 for final submission
 3. Auth complete (Day 2) — all downstream services need user context.
 4. ML stubs live: T10a Day 2; T10b/c/d Day 3. Orchestrator integration (T13) needs at least stub endpoints to call.
 5. Surjit and Nilkanta build independently (Day 2-6) against frozen contract. No cross-dependency until T14.
-6. Inference Orchestrator complete (Day 5) — must be live before T13.
+6. Inference Orchestrator complete (Day 4) — must be live before T13.
 7. Multi-source ML fusion integrated (T13, Day 6) — first real cross-boundary integration.
 8. HITL + MHA alert wired (T13b/T13c, Day 7).
 9. Real-time interdiction path (T15, Day 7) — Diganta owns solo.
@@ -581,7 +651,6 @@ T3 All schemas            XX
 T3b Sequence diagrams     XX
 T3c Sign-off              x(EOD)
 T4 Auth (Surjit)                  XX
-T4c BFFs (Diganta)                 XX
 T8b Kafka backbone (Diganta)       XX
 T6a Evidence (Nilkanta)             xx xx
 T10a Scam NLP stub (Kushal)      XX
@@ -594,12 +663,15 @@ T8d Geospatial (Nilkanta)                 xx xx xx
 T8c Graph Service (Nilkanta)              xx xx
 T7 Audit Service (Diganta)                  XX
 T5b Bot Service (Surjit)                   xx xx
+T4b Citizen BFF (Surjit)                    XX
 T8e Notification+MHA (Nilkanta)              xx xx
+T6d Investigator BFF (Nilkanta)             XX
 T6b Reporting (Nilkanta)                     xx xx xx
 T11 ML Tuning (Kushal)                    xx xx xx xx
 T12 Explainability (Kushal)               xx xx
 T5c Citizen UI (Surjit)                    xx xx xx xx
-T5d Telecom UI (Surjit)                                   xx
+T4c Dept BFFs (Diganta)                                   XX
+T5d Telecom UI (Surjit)                                      xx
 T5e Bank UI (Surjit)                                         xx
 T6c Dashboard UI (Nilkanta)                  xx xx xx xx xx
 T5f Gov UI (Nilkanta)                                        xx

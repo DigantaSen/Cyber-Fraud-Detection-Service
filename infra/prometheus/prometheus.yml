@@ -33,6 +33,7 @@ scrape_configs:
           - 'bot:8000'
           - 'citizen-bff:8000'
           - 'investigator-bff:8000'
+          - 'department-bffs:8000'
           - 'inference-orchestrator:8000'
           - 'audit:8000'
           - 'event-processing:8000'

@@ -12,9 +12,9 @@ All routes are exposed through the Kong API Gateway and versioned under `/api/v1
 |---|---|---|
 | Citizen UI | `/api/v1/citizen/` | `citizen-bff:8000` |
 | Investigator UI | `/api/v1/investigator/` | `investigator-bff:8000` |
-| Bank Portal | `/api/v1/bank/` | `bank-bff:8000` |
-| Telecom Portal | `/api/v1/telecom/` | `telecom-bff:8000` |
-| Gov Portal | `/api/v1/gov/` | `gov-bff:8000` |
+| Bank Portal | `/api/v1/bank/` | `department-bffs:8000` |
+| Telecom Portal | `/api/v1/telecom/` | `department-bffs:8000` |
+| Gov Portal | `/api/v1/gov/` | `department-bffs:8000` |
 | Auth (public) | `/api/v1/auth/` | `auth:8000` |
 | Search (public read) | `/api/v1/search/` | `search:8000` |
 | Events (M2M webhook) | `/api/v1/events/` | `event-processing:8000` |
