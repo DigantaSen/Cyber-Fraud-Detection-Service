@@ -328,6 +328,88 @@ services:
       - platform-net
     restart: "no"   # Run once
 
+  # ══════════════════════════════════════════════════════════
+  # ML MODEL STUBS (Kushal)
+  # Internal model APIs consumed by the Inference Orchestrator.
+  # Host ports are exposed for local smoke testing.
+  # ══════════════════════════════════════════════════════════
+
+  ml-scam-nlp:
+    build:
+      context: ./backend/ml-stubs
+    container_name: platform-ml-scam-nlp
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: ml-scam-nlp
+      MODEL_VERSION: stub-v0.1
+    ports:
+      - "8100:8000"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  ml-counterfeit-cv:
+    build:
+      context: ./backend/ml-stubs
+    container_name: platform-ml-counterfeit-cv
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: ml-counterfeit-cv
+      MODEL_VERSION: stub-v0.1
+    ports:
+      - "8101:8000"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  ml-graph-analyzer:
+    build:
+      context: ./backend/ml-stubs
+    container_name: platform-ml-graph-analyzer
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: ml-graph-analyzer
+      MODEL_VERSION: stub-v0.1
+    ports:
+      - "8102:8000"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  ml-audio-analyzer:
+    build:
+      context: ./backend/ml-stubs
+    container_name: platform-ml-audio-analyzer
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: ml-audio-analyzer
+      MODEL_VERSION: stub-v0.1
+    ports:
+      - "8103:8000"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   # ──────────────────────────────────────────────────────────
   # Kong — API Gateway (DB-less Declarative Mode)
   # JWT validation, rate limiting, correlation-id on every route
