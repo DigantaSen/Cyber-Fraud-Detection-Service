@@ -20,14 +20,15 @@ create_topic() {
   local name=$1
   local retention_ms=$2   # -1 = infinite, else milliseconds
   local cleanup_policy=${3:-delete}
+  local parts=${4:-$PARTITIONS}
 
-  echo "Creating topic: $name"
+  echo "Creating topic: $name (partitions: $parts)"
   $KAFKA_BIN/kafka-topics.sh \
     --bootstrap-server $BOOTSTRAP \
     --create \
     --if-not-exists \
     --topic "$name" \
-    --partitions $PARTITIONS \
+    --partitions $parts \
     --replication-factor $REPLICATION \
     --config retention.ms=$retention_ms \
     --config cleanup.policy=$cleanup_policy \
@@ -100,12 +101,12 @@ REPORT_TTL=$((30 * 24 * 60 * 60 * 1000))
 create_topic "report.generated"              $REPORT_TTL
 create_topic "intelligence.package.generated" $REPORT_TTL
 
-# DLQ topics — 7 days (for inspection and replay)
-DLQ_TTL=$((7 * 24 * 60 * 60 * 1000))
+# DLQ topics — 30 days (for inspection and replay)
+DLQ_TTL=$((30 * 24 * 60 * 60 * 1000))
 for topic in case.created case.updated evidence.uploaded prediction.completed \
              notification.requested audit.recorded telecom.event.ingested \
              transaction.ingested callsession.initiated; do
-  create_topic "${topic}.DLQ" $DLQ_TTL
+  create_topic "${topic}.DLQ" $DLQ_TTL "delete" 1
 done
 
 echo ""

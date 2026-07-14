@@ -66,7 +66,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     ports:
-      - "5432:5432"
+      - "5435:5432"
     networks:
       - platform-net
     healthcheck:
@@ -287,7 +287,7 @@ services:
   # MinIO — S3-Compatible Object Storage (evidence uploads)
   # ──────────────────────────────────────────────────────────
   minio:
-    image: minio/minio:RELEASE.2024-06-12T18-34-04Z
+    image: minio/minio:latest
     container_name: platform-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -310,7 +310,7 @@ services:
 
   # ── MinIO Init (creates buckets on first run) ─────────────
   minio-init:
-    image: minio/mc:RELEASE.2024-06-12T18-34-04Z
+    image: minio/mc:latest
     container_name: platform-minio-init
     depends_on:
       minio:
@@ -411,6 +411,58 @@ services:
       start_period: 10s
 
   # ──────────────────────────────────────────────────────────
+  # Event Processing Service & Outbox Publisher
+  # ──────────────────────────────────────────────────────────
+  event-processing:
+    build:
+      context: ./backend/event-processing
+    container_name: platform-event-processing
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      DSN: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+      TELECOM_WEBHOOK_SECRET: "change_me_telecom"
+      BANK_WEBHOOK_SECRET: "change_me_bank"
+      COUNTERFEIT_WEBHOOK_SECRET: "change_me_counterfeit"
+    ports:
+      - "8005:8000"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  outbox-publisher:
+    build:
+      context: ./backend/event-processing
+    container_name: platform-outbox-publisher
+    restart: unless-stopped
+    command: ["python", "outbox_publisher.py"]
+    environment:
+      DSN: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # ──────────────────────────────────────────────────────────
   # Kong — API Gateway (DB-less Declarative Mode)
   # JWT validation, rate limiting, correlation-id on every route
   # ──────────────────────────────────────────────────────────
@@ -428,6 +480,7 @@ services:
       KONG_ADMIN_LISTEN: "0.0.0.0:8001"
       KONG_PROXY_LISTEN: "0.0.0.0:8000, 0.0.0.0:8443 ssl"
       KONG_PLUGINS: "bundled"
+      KONG_VAULT_ENV_REDIS_PASSWORD: ${REDIS_PASSWORD:-change_me_redis}
     volumes:
       - ./infra/kong/kong.yml:/etc/kong/kong.yml:ro
     ports:
