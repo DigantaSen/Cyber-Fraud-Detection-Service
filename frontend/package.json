@@ -1,0 +1,17 @@
+{
+  "name": "cyber-fraud-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "citizen",
+    "telecom",
+    "bank"
+  ],
+  "scripts": {
+    "dev:citizen": "npm run dev --workspace=citizen",
+    "dev:telecom": "npm run dev --workspace=telecom",
+    "dev:bank": "npm run dev --workspace=bank",
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces"
+  }
+}

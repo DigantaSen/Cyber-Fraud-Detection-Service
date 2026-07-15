@@ -1,0 +1,2438 @@
+{
+  "backend/auth": [
+    {
+      "file": "backend/auth/config.py",
+      "imports": [
+        "pathlib.Path",
+        "pydantic_settings.BaseSettings",
+        "pydantic_settings.SettingsConfigDict"
+      ],
+      "classes": [
+        {
+          "name": "Settings",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/main.py",
+      "imports": [
+        "sys",
+        "uuid",
+        "time",
+        "contextlib.asynccontextmanager",
+        "fastapi.FastAPI",
+        "fastapi.Request",
+        "fastapi.Response",
+        "fastapi.middleware.cors.CORSMiddleware",
+        "fastapi.responses.JSONResponse",
+        "loguru.logger",
+        "prometheus_fastapi_instrumentator.Instrumentator",
+        "sqlalchemy.text",
+        "opentelemetry.trace",
+        "opentelemetry.sdk.trace.TracerProvider",
+        "opentelemetry.sdk.trace.export.BatchSpanProcessor",
+        "opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter",
+        "opentelemetry.instrumentation.fastapi.FastAPIInstrumentor",
+        "opentelemetry.sdk.resources.Resource",
+        "config.settings",
+        "db.get_engine",
+        "db.get_session_factory",
+        "redis_client.create_redis_client",
+        "routers.auth_router.router"
+      ],
+      "classes": [],
+      "functions": [
+        "lifespan",
+        "correlation_middleware",
+        "global_exception_handler"
+      ],
+      "endpoints": [
+        {
+          "function": "liveness",
+          "method": "GET",
+          "path": "/health/live"
+        },
+        {
+          "function": "readiness",
+          "method": "GET",
+          "path": "/health/ready"
+        }
+      ]
+    },
+    {
+      "file": "backend/auth/response_helpers.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "datetime.timezone",
+        "typing.Any"
+      ],
+      "classes": [],
+      "functions": [
+        "success_response",
+        "error_response"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/db.py",
+      "imports": [
+        "typing.AsyncGenerator",
+        "asyncpg",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "sqlalchemy.ext.asyncio.async_sessionmaker",
+        "sqlalchemy.ext.asyncio.create_async_engine",
+        "fastapi.Depends",
+        "fastapi.Request",
+        "config.settings"
+      ],
+      "classes": [],
+      "functions": [
+        "get_engine",
+        "get_session_factory",
+        "get_db"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/redis_client.py",
+      "imports": [
+        "redis.asyncio",
+        "fastapi.Request",
+        "config.settings"
+      ],
+      "classes": [],
+      "functions": [
+        "create_redis_client",
+        "get_redis"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/security/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/security/jwt.py",
+      "imports": [
+        "hashlib",
+        "logging",
+        "secrets",
+        "uuid",
+        "datetime.datetime",
+        "datetime.timedelta",
+        "datetime.timezone",
+        "typing.Optional",
+        "redis.asyncio",
+        "fastapi.Depends",
+        "fastapi.HTTPException",
+        "fastapi.Request",
+        "fastapi.status",
+        "fastapi.security.HTTPAuthorizationCredentials",
+        "fastapi.security.HTTPBearer",
+        "jose.JWTError",
+        "jose.jwt",
+        "config.settings",
+        "models.schemas.CurrentUser",
+        "repositories.session_repository.SessionRepository",
+        "datetime.timezone"
+      ],
+      "classes": [],
+      "functions": [
+        "sign_access_token",
+        "_create_refresh_token",
+        "create_token_pair",
+        "decode_token",
+        "get_current_user",
+        "require_role",
+        "_check_role"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/security/password.py",
+      "imports": [
+        "passlib.context.CryptContext"
+      ],
+      "classes": [],
+      "functions": [
+        "hash_password",
+        "verify_password"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/services/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/services/auth_service.py",
+      "imports": [
+        "hashlib",
+        "secrets",
+        "uuid",
+        "datetime.datetime",
+        "datetime.timedelta",
+        "datetime.timezone",
+        "typing.Optional",
+        "redis.asyncio",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "config.settings",
+        "models.schemas.LoginRequest",
+        "models.schemas.LoginResponse",
+        "models.schemas.RefreshRequest",
+        "models.schemas.RefreshResponse",
+        "models.schemas.RegisterRequest",
+        "models.schemas.RegisterResponse",
+        "repositories.idempotency_repository.IdempotencyRepository",
+        "repositories.session_repository.SessionRepository",
+        "repositories.user_repository.UserRepository",
+        "security.password.hash_password",
+        "security.password.verify_password",
+        "security.jwt.create_token_pair",
+        "security.jwt.sign_access_token",
+        "json"
+      ],
+      "classes": [
+        {
+          "name": "AuthService",
+          "methods": [
+            "__init__",
+            "register",
+            "login",
+            "refresh",
+            "logout"
+          ]
+        },
+        {
+          "name": "DuplicateEmailError",
+          "methods": [
+            "__init__"
+          ]
+        },
+        {
+          "name": "AccountLockedError",
+          "methods": [
+            "__init__"
+          ]
+        },
+        {
+          "name": "InvalidCredentialsError",
+          "methods": []
+        },
+        {
+          "name": "InvalidRefreshTokenError",
+          "methods": []
+        }
+      ],
+      "functions": [
+        "__init__",
+        "register",
+        "login",
+        "refresh",
+        "logout",
+        "_hash_request",
+        "_increment_failure",
+        "__init__",
+        "__init__"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/services/mfa_service.py",
+      "imports": [
+        "base64",
+        "secrets",
+        "uuid",
+        "datetime.datetime",
+        "datetime.timedelta",
+        "datetime.timezone",
+        "pyotp",
+        "redis.asyncio",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "config.settings",
+        "models.schemas.MFAVerifyResponse",
+        "repositories.session_repository.SessionRepository",
+        "repositories.user_repository.UserRepository",
+        "security.jwt.create_token_pair"
+      ],
+      "classes": [
+        {
+          "name": "MFAService",
+          "methods": [
+            "__init__",
+            "generate_totp_secret",
+            "get_provisioning_uri",
+            "enable_mfa",
+            "verify_totp",
+            "verify_mfa"
+          ]
+        },
+        {
+          "name": "MFASessionExpiredError",
+          "methods": []
+        },
+        {
+          "name": "InvalidTOTPError",
+          "methods": []
+        }
+      ],
+      "functions": [
+        "__init__",
+        "generate_totp_secret",
+        "get_provisioning_uri",
+        "enable_mfa",
+        "verify_totp",
+        "verify_mfa"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/routers/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/routers/auth_router.py",
+      "imports": [
+        "uuid",
+        "typing.Optional",
+        "fastapi.APIRouter",
+        "fastapi.Depends",
+        "fastapi.Header",
+        "fastapi.HTTPException",
+        "fastapi.Request",
+        "fastapi.status",
+        "db.get_db",
+        "models.schemas.LoginRequest",
+        "models.schemas.MFAVerifyRequest",
+        "models.schemas.RefreshRequest",
+        "models.schemas.RegisterRequest",
+        "models.schemas.CurrentUser",
+        "redis_client.get_redis",
+        "response_helpers.error_response",
+        "response_helpers.success_response",
+        "security.jwt.get_current_user",
+        "services.auth_service.AuthService",
+        "services.auth_service.AccountLockedError",
+        "services.auth_service.DuplicateEmailError",
+        "services.auth_service.InvalidCredentialsError",
+        "services.auth_service.InvalidRefreshTokenError",
+        "services.mfa_service.MFAService",
+        "jose.jwt",
+        "config.settings",
+        "hashlib"
+      ],
+      "classes": [],
+      "functions": [
+        "_get_correlation_id"
+      ],
+      "endpoints": [
+        {
+          "function": "register",
+          "method": "POST",
+          "path": "/register"
+        },
+        {
+          "function": "login",
+          "method": "POST",
+          "path": "/login"
+        },
+        {
+          "function": "mfa_verify",
+          "method": "POST",
+          "path": "/mfa/verify"
+        },
+        {
+          "function": "refresh",
+          "method": "POST",
+          "path": "/refresh"
+        },
+        {
+          "function": "logout",
+          "method": "POST",
+          "path": "/logout"
+        },
+        {
+          "function": "me",
+          "method": "GET",
+          "path": "/me"
+        }
+      ]
+    },
+    {
+      "file": "backend/auth/models/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/models/user.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "sqlalchemy.Boolean",
+        "sqlalchemy.CheckConstraint",
+        "sqlalchemy.DateTime",
+        "sqlalchemy.String",
+        "sqlalchemy.Text",
+        "sqlalchemy.UUID",
+        "sqlalchemy.orm.DeclarativeBase",
+        "sqlalchemy.orm.Mapped",
+        "sqlalchemy.orm.mapped_column"
+      ],
+      "classes": [
+        {
+          "name": "Base",
+          "methods": []
+        },
+        {
+          "name": "User",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/models/idempotency.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "sqlalchemy.DateTime",
+        "sqlalchemy.Integer",
+        "sqlalchemy.JSON",
+        "sqlalchemy.String",
+        "sqlalchemy.Text",
+        "sqlalchemy.UUID",
+        "sqlalchemy.orm.Mapped",
+        "sqlalchemy.orm.mapped_column",
+        "models.user.Base"
+      ],
+      "classes": [
+        {
+          "name": "IdempotencyKey",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/models/schemas.py",
+      "imports": [
+        "uuid",
+        "re",
+        "typing.Optional",
+        "pydantic.BaseModel",
+        "pydantic.EmailStr",
+        "pydantic.Field",
+        "pydantic.field_validator",
+        "pydantic.model_validator"
+      ],
+      "classes": [
+        {
+          "name": "CurrentUser",
+          "methods": []
+        },
+        {
+          "name": "RegisterRequest",
+          "methods": [
+            "validate_role",
+            "validate_password",
+            "validate_phone",
+            "validate_jurisdiction"
+          ]
+        },
+        {
+          "name": "RegisterResponse",
+          "methods": []
+        },
+        {
+          "name": "LoginRequest",
+          "methods": []
+        },
+        {
+          "name": "LoginResponse",
+          "methods": []
+        },
+        {
+          "name": "MFAVerifyRequest",
+          "methods": []
+        },
+        {
+          "name": "MFAVerifyResponse",
+          "methods": []
+        },
+        {
+          "name": "RefreshRequest",
+          "methods": []
+        },
+        {
+          "name": "RefreshResponse",
+          "methods": []
+        },
+        {
+          "name": "MeResponse",
+          "methods": []
+        }
+      ],
+      "functions": [
+        "validate_role",
+        "validate_password",
+        "validate_phone",
+        "validate_jurisdiction"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/models/session.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "sqlalchemy.DateTime",
+        "sqlalchemy.ForeignKey",
+        "sqlalchemy.String",
+        "sqlalchemy.Text",
+        "sqlalchemy.UUID",
+        "sqlalchemy.dialects.postgresql.INET",
+        "sqlalchemy.orm.Mapped",
+        "sqlalchemy.orm.mapped_column",
+        "models.user.Base"
+      ],
+      "classes": [
+        {
+          "name": "Session",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/repositories/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/repositories/session_repository.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "datetime.timezone",
+        "sqlalchemy.select",
+        "sqlalchemy.update",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "models.session.Session"
+      ],
+      "classes": [
+        {
+          "name": "SessionRepository",
+          "methods": [
+            "__init__",
+            "create",
+            "get_by_token_hash",
+            "revoke",
+            "revoke_all_for_user"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "create",
+        "get_by_token_hash",
+        "revoke",
+        "revoke_all_for_user"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/repositories/user_repository.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "datetime.timezone",
+        "sqlalchemy.select",
+        "sqlalchemy.update",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "models.user.User"
+      ],
+      "classes": [
+        {
+          "name": "UserRepository",
+          "methods": [
+            "__init__",
+            "get_by_email",
+            "get_by_id",
+            "create",
+            "update_status",
+            "update_last_login",
+            "update_mfa"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "get_by_email",
+        "get_by_id",
+        "create",
+        "update_status",
+        "update_last_login",
+        "update_mfa"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/repositories/idempotency_repository.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "datetime.timedelta",
+        "datetime.timezone",
+        "sqlalchemy.select",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "models.idempotency.IdempotencyKey"
+      ],
+      "classes": [
+        {
+          "name": "IdempotencyRepository",
+          "methods": [
+            "__init__",
+            "get",
+            "store"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "get",
+        "store"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/tests/conftest.py",
+      "imports": [
+        "os",
+        "uuid",
+        "datetime.datetime",
+        "datetime.timezone",
+        "unittest.mock.AsyncMock",
+        "unittest.mock.MagicMock",
+        "pytest",
+        "cryptography.hazmat.primitives.asymmetric.rsa",
+        "cryptography.hazmat.primitives.serialization",
+        "fastapi.testclient.TestClient",
+        "httpx.AsyncClient",
+        "httpx.ASGITransport",
+        "config.settings",
+        "main.app",
+        "models.user.User",
+        "security.password.hash_password",
+        "db.get_db",
+        "redis_client.get_redis"
+      ],
+      "classes": [],
+      "functions": [
+        "mock_user",
+        "mock_db",
+        "mock_redis",
+        "async_client"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/tests/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/tests/test_auth_endpoints.py",
+      "imports": [
+        "uuid",
+        "unittest.mock.AsyncMock",
+        "unittest.mock.patch",
+        "unittest.mock.MagicMock",
+        "pytest",
+        "security.jwt.sign_access_token",
+        "main.app"
+      ],
+      "classes": [
+        {
+          "name": "TestRegister",
+          "methods": [
+            "test_register_success",
+            "test_register_missing_idempotency_key",
+            "test_register_invalid_role",
+            "test_register_duplicate_email"
+          ]
+        },
+        {
+          "name": "TestLogin",
+          "methods": [
+            "test_login_invalid_credentials",
+            "test_login_locked_account"
+          ]
+        },
+        {
+          "name": "TestMe",
+          "methods": [
+            "test_me_success"
+          ]
+        },
+        {
+          "name": "TestHealthEndpoints",
+          "methods": [
+            "test_liveness"
+          ]
+        }
+      ],
+      "functions": [
+        "test_register_success",
+        "test_register_missing_idempotency_key",
+        "test_register_invalid_role",
+        "test_register_duplicate_email",
+        "test_login_invalid_credentials",
+        "test_login_locked_account",
+        "test_me_success",
+        "test_liveness"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/auth/tests/test_jwt.py",
+      "imports": [
+        "uuid",
+        "pytest",
+        "unittest.mock.AsyncMock",
+        "unittest.mock.patch",
+        "security.jwt.sign_access_token",
+        "security.jwt.decode_token",
+        "security.jwt.get_current_user",
+        "models.user.User",
+        "models.schemas.CurrentUser"
+      ],
+      "classes": [],
+      "functions": [
+        "sample_user",
+        "test_sign_and_decode_token",
+        "test_token_contains_required_claims"
+      ],
+      "endpoints": []
+    }
+  ],
+  "backend/case": [
+    {
+      "file": "backend/case/config.py",
+      "imports": [
+        "pathlib.Path",
+        "pydantic_settings.BaseSettings",
+        "pydantic_settings.SettingsConfigDict"
+      ],
+      "classes": [
+        {
+          "name": "Settings",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/http_client.py",
+      "imports": [
+        "fastapi.Request",
+        "httpx"
+      ],
+      "classes": [],
+      "functions": [
+        "get_http_client"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/main.py",
+      "imports": [
+        "sys",
+        "uuid",
+        "time",
+        "contextlib.asynccontextmanager",
+        "fastapi.FastAPI",
+        "fastapi.Request",
+        "fastapi.Response",
+        "fastapi.middleware.cors.CORSMiddleware",
+        "fastapi.responses.JSONResponse",
+        "loguru.logger",
+        "prometheus_fastapi_instrumentator.Instrumentator",
+        "opentelemetry.trace",
+        "opentelemetry.sdk.trace.TracerProvider",
+        "opentelemetry.sdk.trace.export.BatchSpanProcessor",
+        "opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter",
+        "opentelemetry.instrumentation.fastapi.FastAPIInstrumentor",
+        "opentelemetry.sdk.resources.Resource",
+        "config.settings",
+        "httpx",
+        "db.get_engine",
+        "db.get_session_factory",
+        "redis_client.create_redis_client",
+        "sqlalchemy.text",
+        "routers.case_router.router"
+      ],
+      "classes": [],
+      "functions": [
+        "lifespan",
+        "correlation_middleware",
+        "global_exception_handler"
+      ],
+      "endpoints": [
+        {
+          "function": "liveness",
+          "method": "GET",
+          "path": "/health/live"
+        },
+        {
+          "function": "readiness",
+          "method": "GET",
+          "path": "/health/ready"
+        },
+        {
+          "function": "integration_check",
+          "method": "GET",
+          "path": "/health/integration"
+        }
+      ]
+    },
+    {
+      "file": "backend/case/response_helpers.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "datetime.timezone",
+        "typing.Any"
+      ],
+      "classes": [],
+      "functions": [
+        "success_response",
+        "error_response"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/db.py",
+      "imports": [
+        "typing.AsyncGenerator",
+        "asyncpg",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "sqlalchemy.ext.asyncio.async_sessionmaker",
+        "sqlalchemy.ext.asyncio.create_async_engine",
+        "fastapi.Depends",
+        "fastapi.Request",
+        "config.settings"
+      ],
+      "classes": [],
+      "functions": [
+        "get_engine",
+        "get_session_factory",
+        "get_db"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/redis_client.py",
+      "imports": [
+        "redis.asyncio",
+        "fastapi.Request",
+        "config.settings"
+      ],
+      "classes": [],
+      "functions": [
+        "create_redis_client",
+        "get_redis"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/security/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/security/jwt.py",
+      "imports": [
+        "logging",
+        "uuid",
+        "typing.Optional",
+        "redis.asyncio",
+        "fastapi.Depends",
+        "fastapi.HTTPException",
+        "fastapi.Request",
+        "fastapi.status",
+        "fastapi.security.HTTPAuthorizationCredentials",
+        "fastapi.security.HTTPBearer",
+        "jose.JWTError",
+        "jose.jwt",
+        "config.settings",
+        "models.schemas.CurrentUser"
+      ],
+      "classes": [],
+      "functions": [
+        "decode_token",
+        "get_current_user",
+        "require_role",
+        "_check_role"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/state_machine/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/state_machine/transitions.py",
+      "imports": [],
+      "classes": [
+        {
+          "name": "TransitionError",
+          "methods": [
+            "__init__"
+          ]
+        },
+        {
+          "name": "TransitionPermissionError",
+          "methods": [
+            "__init__"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "__init__",
+        "validate_transition",
+        "get_allowed_transitions"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/services/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/services/case_service.py",
+      "imports": [
+        "hashlib",
+        "json",
+        "uuid",
+        "datetime.datetime",
+        "datetime.timezone",
+        "typing.Optional",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "models.schemas.CaseDetailResponse",
+        "models.schemas.CreateCaseRequest",
+        "models.schemas.CreateCaseResponse",
+        "models.schemas.UpdateCaseStateRequest",
+        "models.schemas.VerdictOverrideRequest",
+        "repositories.case_repository.CaseRepository",
+        "repositories.idempotency_repository.IdempotencyRepository",
+        "repositories.outbox_repository.OutboxRepository",
+        "repositories.override_repository.OverrideRepository",
+        "repositories.prediction_repository.PredictionRepository",
+        "repositories.timeline_repository.TimelineRepository",
+        "state_machine.transitions.TransitionError",
+        "state_machine.transitions.TransitionPermissionError",
+        "state_machine.transitions.validate_transition"
+      ],
+      "classes": [
+        {
+          "name": "CaseNotFoundError",
+          "methods": []
+        },
+        {
+          "name": "InvalidTransitionError",
+          "methods": []
+        },
+        {
+          "name": "CasePermissionError",
+          "methods": []
+        },
+        {
+          "name": "DuplicateCaseError",
+          "methods": []
+        },
+        {
+          "name": "CaseService",
+          "methods": [
+            "__init__",
+            "create_case",
+            "get_case",
+            "update_state",
+            "set_pending_review",
+            "override_verdict",
+            "_to_detail_response"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "create_case",
+        "get_case",
+        "update_state",
+        "set_pending_review",
+        "override_verdict",
+        "_to_detail_response",
+        "_hash_request"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/routers/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/routers/case_router.py",
+      "imports": [
+        "uuid",
+        "typing.Optional",
+        "fastapi.APIRouter",
+        "fastapi.Depends",
+        "fastapi.Header",
+        "fastapi.HTTPException",
+        "fastapi.Request",
+        "db.get_db",
+        "models.schemas.CreateCaseRequest",
+        "models.schemas.UpdateCaseStateRequest",
+        "models.schemas.VerdictOverrideRequest",
+        "models.schemas.CurrentUser",
+        "response_helpers.success_response",
+        "response_helpers.error_response",
+        "security.jwt.get_current_user",
+        "security.jwt.require_role",
+        "services.case_service.CaseService",
+        "services.case_service.CaseNotFoundError",
+        "services.case_service.InvalidTransitionError",
+        "services.case_service.CasePermissionError",
+        "services.case_service.DuplicateCaseError",
+        "repositories.case_repository.CaseRepository",
+        "repositories.timeline_repository.TimelineRepository"
+      ],
+      "classes": [],
+      "functions": [
+        "_corr"
+      ],
+      "endpoints": [
+        {
+          "function": "create_case",
+          "method": "POST",
+          "path": ""
+        },
+        {
+          "function": "get_case",
+          "method": "GET",
+          "path": "/{case_id}"
+        },
+        {
+          "function": "list_cases",
+          "method": "GET",
+          "path": ""
+        },
+        {
+          "function": "update_case_state",
+          "method": "PATCH",
+          "path": "/{case_id}/state"
+        },
+        {
+          "function": "set_pending_review",
+          "method": "POST",
+          "path": "/{case_id}/verdict/pending-review"
+        },
+        {
+          "function": "override_verdict",
+          "method": "PATCH",
+          "path": "/{case_id}/verdict/override"
+        },
+        {
+          "function": "get_timeline",
+          "method": "GET",
+          "path": "/{case_id}/timeline"
+        }
+      ]
+    },
+    {
+      "file": "backend/case/models/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/models/outbox.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "typing.Any",
+        "typing.Optional",
+        "sqlalchemy.UUID",
+        "sqlalchemy.CheckConstraint",
+        "sqlalchemy.DateTime",
+        "sqlalchemy.Integer",
+        "sqlalchemy.String",
+        "sqlalchemy.Text",
+        "sqlalchemy.func",
+        "sqlalchemy.dialects.postgresql.JSONB",
+        "sqlalchemy.orm.DeclarativeBase",
+        "sqlalchemy.orm.Mapped",
+        "sqlalchemy.orm.mapped_column"
+      ],
+      "classes": [
+        {
+          "name": "Base",
+          "methods": []
+        },
+        {
+          "name": "Outbox",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/models/idempotency.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "sqlalchemy.DateTime",
+        "sqlalchemy.Integer",
+        "sqlalchemy.JSON",
+        "sqlalchemy.String",
+        "sqlalchemy.Text",
+        "sqlalchemy.UUID",
+        "sqlalchemy.orm.DeclarativeBase",
+        "sqlalchemy.orm.Mapped",
+        "sqlalchemy.orm.mapped_column"
+      ],
+      "classes": [
+        {
+          "name": "Base",
+          "methods": []
+        },
+        {
+          "name": "IdempotencyKey",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/models/timeline.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "typing.Any",
+        "typing.Optional",
+        "sqlalchemy.UUID",
+        "sqlalchemy.DateTime",
+        "sqlalchemy.ForeignKey",
+        "sqlalchemy.String",
+        "sqlalchemy.Text",
+        "sqlalchemy.func",
+        "sqlalchemy.dialects.postgresql.JSONB",
+        "sqlalchemy.orm.DeclarativeBase",
+        "sqlalchemy.orm.Mapped",
+        "sqlalchemy.orm.mapped_column"
+      ],
+      "classes": [
+        {
+          "name": "Base",
+          "methods": []
+        },
+        {
+          "name": "CaseTimeline",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/models/schemas.py",
+      "imports": [
+        "re",
+        "uuid",
+        "datetime.datetime",
+        "decimal.Decimal",
+        "typing.Any",
+        "typing.List",
+        "typing.Optional",
+        "pydantic.BaseModel",
+        "pydantic.Field",
+        "pydantic.field_validator",
+        "pydantic.model_validator",
+        "pydantic.alias_generators.to_camel"
+      ],
+      "classes": [
+        {
+          "name": "CurrentUser",
+          "methods": []
+        },
+        {
+          "name": "CamelModel",
+          "methods": []
+        },
+        {
+          "name": "CreateCaseRequest",
+          "methods": [
+            "validate_complaint_type",
+            "validate_phone",
+            "validate_language_code",
+            "validate_coordinates"
+          ]
+        },
+        {
+          "name": "UpdateCaseStateRequest",
+          "methods": [
+            "validate_state"
+          ]
+        },
+        {
+          "name": "VerdictOverrideRequest",
+          "methods": [
+            "validate_decision"
+          ]
+        },
+        {
+          "name": "PredictionSummary",
+          "methods": []
+        },
+        {
+          "name": "CreateCaseResponse",
+          "methods": []
+        },
+        {
+          "name": "CaseSummaryResponse",
+          "methods": []
+        },
+        {
+          "name": "CaseDetailResponse",
+          "methods": []
+        },
+        {
+          "name": "PaginatedCasesResponse",
+          "methods": []
+        },
+        {
+          "name": "TimelineEventResponse",
+          "methods": []
+        },
+        {
+          "name": "PaginatedTimelineResponse",
+          "methods": []
+        },
+        {
+          "name": "VerdictOverrideResponse",
+          "methods": []
+        }
+      ],
+      "functions": [
+        "validate_complaint_type",
+        "validate_phone",
+        "validate_language_code",
+        "validate_coordinates",
+        "validate_state",
+        "validate_decision"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/models/override.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "decimal.Decimal",
+        "typing.Optional",
+        "sqlalchemy.UUID",
+        "sqlalchemy.CheckConstraint",
+        "sqlalchemy.DateTime",
+        "sqlalchemy.ForeignKey",
+        "sqlalchemy.Numeric",
+        "sqlalchemy.String",
+        "sqlalchemy.Text",
+        "sqlalchemy.func",
+        "sqlalchemy.orm.DeclarativeBase",
+        "sqlalchemy.orm.Mapped",
+        "sqlalchemy.orm.mapped_column"
+      ],
+      "classes": [
+        {
+          "name": "Base",
+          "methods": []
+        },
+        {
+          "name": "OverrideRecord",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/models/prediction.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "decimal.Decimal",
+        "typing.Any",
+        "typing.Optional",
+        "sqlalchemy.UUID",
+        "sqlalchemy.Boolean",
+        "sqlalchemy.CheckConstraint",
+        "sqlalchemy.DateTime",
+        "sqlalchemy.ForeignKey",
+        "sqlalchemy.Numeric",
+        "sqlalchemy.String",
+        "sqlalchemy.Text",
+        "sqlalchemy.func",
+        "sqlalchemy.dialects.postgresql.JSONB",
+        "sqlalchemy.orm.DeclarativeBase",
+        "sqlalchemy.orm.Mapped",
+        "sqlalchemy.orm.mapped_column"
+      ],
+      "classes": [
+        {
+          "name": "Base",
+          "methods": []
+        },
+        {
+          "name": "FusedVerdict",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/models/case.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "decimal.Decimal",
+        "typing.Optional",
+        "sqlalchemy.UUID",
+        "sqlalchemy.CheckConstraint",
+        "sqlalchemy.DateTime",
+        "sqlalchemy.ForeignKey",
+        "sqlalchemy.Numeric",
+        "sqlalchemy.String",
+        "sqlalchemy.Text",
+        "sqlalchemy.func",
+        "sqlalchemy.orm.DeclarativeBase",
+        "sqlalchemy.orm.Mapped",
+        "sqlalchemy.orm.mapped_column"
+      ],
+      "classes": [
+        {
+          "name": "Base",
+          "methods": []
+        },
+        {
+          "name": "Case",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/repositories/prediction_repository.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "datetime.timezone",
+        "typing.Optional",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "models.prediction.FusedVerdict"
+      ],
+      "classes": [
+        {
+          "name": "PredictionRepository",
+          "methods": [
+            "__init__",
+            "insert"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "insert"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/repositories/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/repositories/timeline_repository.py",
+      "imports": [
+        "base64",
+        "uuid",
+        "datetime.datetime",
+        "typing.Any",
+        "typing.Optional",
+        "sqlalchemy.func",
+        "sqlalchemy.select",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "models.timeline.CaseTimeline"
+      ],
+      "classes": [
+        {
+          "name": "TimelineRepository",
+          "methods": [
+            "__init__",
+            "append",
+            "paginate"
+          ]
+        }
+      ],
+      "functions": [
+        "_encode_cursor",
+        "_decode_cursor",
+        "__init__",
+        "append",
+        "paginate"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/repositories/override_repository.py",
+      "imports": [
+        "uuid",
+        "decimal.Decimal",
+        "typing.Optional",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "models.override.OverrideRecord"
+      ],
+      "classes": [
+        {
+          "name": "OverrideRepository",
+          "methods": [
+            "__init__",
+            "create"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "create"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/repositories/case_repository.py",
+      "imports": [
+        "base64",
+        "uuid",
+        "datetime.datetime",
+        "datetime.timezone",
+        "typing.Optional",
+        "sqlalchemy.func",
+        "sqlalchemy.select",
+        "sqlalchemy.update",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "models.case.Case"
+      ],
+      "classes": [
+        {
+          "name": "CaseRepository",
+          "methods": [
+            "__init__",
+            "create",
+            "get_by_id",
+            "list",
+            "update_state",
+            "generate_case_number"
+          ]
+        }
+      ],
+      "functions": [
+        "_encode_cursor",
+        "_decode_cursor",
+        "__init__",
+        "create",
+        "get_by_id",
+        "list",
+        "update_state",
+        "generate_case_number"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/repositories/outbox_repository.py",
+      "imports": [
+        "uuid",
+        "typing.Optional",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "models.outbox.Outbox"
+      ],
+      "classes": [
+        {
+          "name": "OutboxRepository",
+          "methods": [
+            "__init__",
+            "publish"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "publish"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/repositories/idempotency_repository.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "datetime.timedelta",
+        "datetime.timezone",
+        "sqlalchemy.select",
+        "sqlalchemy.ext.asyncio.AsyncSession",
+        "models.idempotency.IdempotencyKey"
+      ],
+      "classes": [
+        {
+          "name": "IdempotencyRepository",
+          "methods": [
+            "__init__",
+            "get",
+            "store"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "get",
+        "store"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/tests/conftest.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "datetime.timezone",
+        "unittest.mock.AsyncMock",
+        "unittest.mock.MagicMock",
+        "pytest",
+        "httpx.AsyncClient",
+        "httpx.ASGITransport",
+        "main.app"
+      ],
+      "classes": [],
+      "functions": [
+        "mock_db",
+        "sample_case_id",
+        "async_client",
+        "valid_jwt_headers"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/tests/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/tests/test_case_endpoints.py",
+      "imports": [
+        "uuid",
+        "unittest.mock.AsyncMock",
+        "unittest.mock.patch",
+        "pytest",
+        "main.app",
+        "security.jwt.get_current_user",
+        "db.get_db",
+        "models.schemas.CurrentUser",
+        "main.app",
+        "security.jwt.get_current_user",
+        "db.get_db",
+        "models.schemas.CurrentUser",
+        "main.app",
+        "security.jwt.get_current_user",
+        "db.get_db",
+        "models.schemas.CurrentUser",
+        "services.case_service.InvalidTransitionError",
+        "main.app",
+        "security.jwt.get_current_user",
+        "db.get_db",
+        "models.schemas.CurrentUser",
+        "fastapi.HTTPException",
+        "main.app",
+        "security.jwt.get_current_user",
+        "models.schemas.CurrentUser"
+      ],
+      "classes": [
+        {
+          "name": "TestCreateCase",
+          "methods": [
+            "test_create_case_missing_idempotency_key",
+            "test_create_case_invalid_complaint_type"
+          ]
+        },
+        {
+          "name": "TestGetCase",
+          "methods": [
+            "test_get_case_not_found"
+          ]
+        },
+        {
+          "name": "TestStateTransition",
+          "methods": [
+            "test_invalid_transition_returns_422"
+          ]
+        },
+        {
+          "name": "TestVerdictOverride",
+          "methods": [
+            "test_override_requires_investigator_role"
+          ]
+        }
+      ],
+      "functions": [
+        "test_create_case_missing_idempotency_key",
+        "mock_user",
+        "test_create_case_invalid_complaint_type",
+        "mock_user",
+        "test_get_case_not_found",
+        "mock_user",
+        "test_invalid_transition_returns_422",
+        "mock_user",
+        "test_override_requires_investigator_role",
+        "mock_user"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/tests/test_state_machine.py",
+      "imports": [
+        "pytest",
+        "state_machine.transitions.validate_transition",
+        "state_machine.transitions.TransitionError",
+        "state_machine.transitions.TransitionPermissionError",
+        "state_machine.transitions.get_allowed_transitions",
+        "state_machine.transitions.VALID_STATES"
+      ],
+      "classes": [
+        {
+          "name": "TestValidTransitions",
+          "methods": [
+            "test_new_to_assigned_investigator",
+            "test_assigned_to_investigating",
+            "test_pending_ai_to_investigating_ai_timeout",
+            "test_pending_ai_to_action_taken",
+            "test_pending_ai_to_closed"
+          ]
+        },
+        {
+          "name": "TestInvalidTransitions",
+          "methods": [
+            "test_new_to_closed_invalid",
+            "test_closed_is_terminal",
+            "test_unknown_target_state",
+            "test_wrong_reason_for_ai_timeout"
+          ]
+        },
+        {
+          "name": "TestRoleRestrictions",
+          "methods": [
+            "test_citizen_cannot_assign",
+            "test_admin_can_assign"
+          ]
+        },
+        {
+          "name": "TestHelpers",
+          "methods": [
+            "test_get_allowed_transitions_new",
+            "test_get_allowed_transitions_closed",
+            "test_all_states_defined"
+          ]
+        }
+      ],
+      "functions": [
+        "test_new_to_assigned_investigator",
+        "test_assigned_to_investigating",
+        "test_pending_ai_to_investigating_ai_timeout",
+        "test_pending_ai_to_action_taken",
+        "test_pending_ai_to_closed",
+        "test_new_to_closed_invalid",
+        "test_closed_is_terminal",
+        "test_unknown_target_state",
+        "test_wrong_reason_for_ai_timeout",
+        "test_citizen_cannot_assign",
+        "test_admin_can_assign",
+        "test_get_allowed_transitions_new",
+        "test_get_allowed_transitions_closed",
+        "test_all_states_defined"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/case/tests/test_outbox.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "datetime.timezone",
+        "unittest.mock.AsyncMock",
+        "unittest.mock.patch",
+        "unittest.mock.call",
+        "pytest",
+        "repositories.outbox_repository.OutboxRepository"
+      ],
+      "classes": [
+        {
+          "name": "TestOutboxRepository",
+          "methods": [
+            "test_publish_inserts_outbox_row"
+          ]
+        }
+      ],
+      "functions": [
+        "test_publish_inserts_outbox_row"
+      ],
+      "endpoints": []
+    }
+  ],
+  "backend/bot": [
+    {
+      "file": "backend/bot/config.py",
+      "imports": [
+        "pathlib.Path",
+        "pydantic_settings.BaseSettings",
+        "pydantic_settings.SettingsConfigDict"
+      ],
+      "classes": [
+        {
+          "name": "Settings",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/http_client.py",
+      "imports": [
+        "fastapi.Request",
+        "httpx"
+      ],
+      "classes": [],
+      "functions": [
+        "get_http_client"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/main.py",
+      "imports": [
+        "sys",
+        "uuid",
+        "time",
+        "contextlib.asynccontextmanager",
+        "fastapi.FastAPI",
+        "fastapi.Request",
+        "fastapi.Response",
+        "fastapi.middleware.cors.CORSMiddleware",
+        "fastapi.responses.JSONResponse",
+        "loguru.logger",
+        "prometheus_fastapi_instrumentator.Instrumentator",
+        "opentelemetry.trace",
+        "opentelemetry.sdk.trace.TracerProvider",
+        "opentelemetry.sdk.trace.export.BatchSpanProcessor",
+        "opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter",
+        "opentelemetry.instrumentation.fastapi.FastAPIInstrumentor",
+        "opentelemetry.sdk.resources.Resource",
+        "config.settings",
+        "httpx",
+        "redis_client.create_redis_client",
+        "routers.bot_router.router"
+      ],
+      "classes": [],
+      "functions": [
+        "lifespan",
+        "correlation_middleware",
+        "global_exception_handler"
+      ],
+      "endpoints": [
+        {
+          "function": "liveness",
+          "method": "GET",
+          "path": "/health/live"
+        },
+        {
+          "function": "readiness",
+          "method": "GET",
+          "path": "/health/ready"
+        }
+      ]
+    },
+    {
+      "file": "backend/bot/response_helpers.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "datetime.timezone",
+        "typing.Any"
+      ],
+      "classes": [],
+      "functions": [
+        "success_response",
+        "error_response"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/redis_client.py",
+      "imports": [
+        "redis.asyncio",
+        "fastapi.Request",
+        "config.settings"
+      ],
+      "classes": [],
+      "functions": [
+        "create_redis_client",
+        "get_redis"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/services/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/services/language_service.py",
+      "imports": [
+        "langdetect.detect",
+        "langdetect.LangDetectException"
+      ],
+      "classes": [],
+      "functions": [
+        "detect_language",
+        "is_supported_language"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/services/session_service.py",
+      "imports": [
+        "json",
+        "uuid",
+        "datetime.datetime",
+        "datetime.timedelta",
+        "datetime.timezone",
+        "typing.Optional",
+        "redis.asyncio"
+      ],
+      "classes": [
+        {
+          "name": "SessionService",
+          "methods": [
+            "__init__",
+            "_make_key",
+            "_scan_key_pattern",
+            "get_session",
+            "create_session",
+            "update_session",
+            "delete_session"
+          ]
+        },
+        {
+          "name": "SessionNotFoundError",
+          "methods": [
+            "__init__"
+          ]
+        }
+      ],
+      "functions": [
+        "__init__",
+        "_make_key",
+        "_scan_key_pattern",
+        "get_session",
+        "create_session",
+        "update_session",
+        "delete_session",
+        "__init__"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/services/orchestrator_client.py",
+      "imports": [
+        "httpx",
+        "typing.Optional"
+      ],
+      "classes": [],
+      "functions": [
+        "get_risk_assessment"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/routers/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/routers/bot_router.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "datetime.timedelta",
+        "datetime.timezone",
+        "typing.Optional",
+        "fastapi.APIRouter",
+        "fastapi.Depends",
+        "fastapi.HTTPException",
+        "fastapi.Request",
+        "http_client.get_http_client",
+        "models.schemas.BotMessageRequest",
+        "models.schemas.BotMessageResponse",
+        "models.schemas.RiskAssessmentPayload",
+        "redis_client.get_redis",
+        "response_helpers.error_response",
+        "response_helpers.success_response",
+        "services.language_service.detect_language",
+        "services.orchestrator_client.get_risk_assessment",
+        "services.session_service.SessionService",
+        "services.session_service.SessionNotFoundError"
+      ],
+      "classes": [],
+      "functions": [
+        "_corr",
+        "_classify_intent",
+        "_get_suggested_actions",
+        "_generate_bot_response"
+      ],
+      "endpoints": [
+        {
+          "function": "send_message",
+          "method": "POST",
+          "path": "/message"
+        },
+        {
+          "function": "get_session",
+          "method": "GET",
+          "path": "/session/{session_id}"
+        },
+        {
+          "function": "whatsapp_webhook",
+          "method": "POST",
+          "path": "/whatsapp"
+        }
+      ]
+    },
+    {
+      "file": "backend/bot/models/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/models/schemas.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "typing.Any",
+        "typing.Optional",
+        "pydantic.BaseModel",
+        "pydantic.Field",
+        "pydantic.field_validator",
+        "pydantic.ConfigDict",
+        "pydantic.alias_generators.to_camel"
+      ],
+      "classes": [
+        {
+          "name": "CamelModel",
+          "methods": []
+        },
+        {
+          "name": "BotMessageRequest",
+          "methods": [
+            "validate_channel"
+          ]
+        },
+        {
+          "name": "RiskAssessmentPayload",
+          "methods": []
+        },
+        {
+          "name": "BotMessageResponse",
+          "methods": []
+        },
+        {
+          "name": "BotSessionState",
+          "methods": []
+        },
+        {
+          "name": "BotSessionResponse",
+          "methods": []
+        }
+      ],
+      "functions": [
+        "validate_channel"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/tests/conftest.py",
+      "imports": [
+        "pytest",
+        "unittest.mock.AsyncMock",
+        "httpx.AsyncClient",
+        "httpx.ASGITransport",
+        "main.app"
+      ],
+      "classes": [],
+      "functions": [
+        "mock_redis",
+        "empty_scan",
+        "async_client"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/tests/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/bot/tests/test_bot_endpoints.py",
+      "imports": [
+        "json",
+        "uuid",
+        "unittest.mock.AsyncMock",
+        "pytest",
+        "services.language_service.detect_language",
+        "services.language_service.is_supported_language",
+        "services.session_service.SessionService",
+        "main.app",
+        "redis_client.get_redis",
+        "http_client.get_http_client",
+        "main.app",
+        "redis_client.get_redis"
+      ],
+      "classes": [
+        {
+          "name": "TestLanguageDetection",
+          "methods": [
+            "test_detect_hindi",
+            "test_detect_english",
+            "test_empty_string_returns_en",
+            "test_short_string_returns_en",
+            "test_unsupported_language_falls_back_to_en",
+            "test_all_supported_langs_in_set"
+          ]
+        },
+        {
+          "name": "TestSessionService",
+          "methods": [
+            "test_create_session",
+            "test_get_session_not_found"
+          ]
+        },
+        {
+          "name": "TestBotMessage",
+          "methods": [
+            "test_new_session_created_without_session_id",
+            "test_get_session_not_found_returns_404",
+            "test_whatsapp_webhook_returns_ack",
+            "test_liveness"
+          ]
+        }
+      ],
+      "functions": [
+        "test_detect_hindi",
+        "test_detect_english",
+        "test_empty_string_returns_en",
+        "test_short_string_returns_en",
+        "test_unsupported_language_falls_back_to_en",
+        "test_all_supported_langs_in_set",
+        "test_create_session",
+        "test_get_session_not_found",
+        "test_new_session_created_without_session_id",
+        "test_get_session_not_found_returns_404",
+        "test_whatsapp_webhook_returns_ack",
+        "test_liveness"
+      ],
+      "endpoints": []
+    }
+  ],
+  "backend/citizen-bff": [
+    {
+      "file": "backend/citizen-bff/config.py",
+      "imports": [
+        "pathlib.Path",
+        "pydantic_settings.BaseSettings",
+        "pydantic_settings.SettingsConfigDict"
+      ],
+      "classes": [
+        {
+          "name": "Settings",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/citizen-bff/main.py",
+      "imports": [
+        "sys",
+        "uuid",
+        "time",
+        "contextlib.asynccontextmanager",
+        "fastapi.FastAPI",
+        "fastapi.Request",
+        "fastapi.Response",
+        "fastapi.middleware.cors.CORSMiddleware",
+        "fastapi.responses.JSONResponse",
+        "loguru.logger",
+        "prometheus_fastapi_instrumentator.Instrumentator",
+        "opentelemetry.trace",
+        "opentelemetry.sdk.trace.TracerProvider",
+        "opentelemetry.sdk.trace.export.BatchSpanProcessor",
+        "opentelemetry.exporter.otlp.proto.grpc.trace_exporter.OTLPSpanExporter",
+        "opentelemetry.instrumentation.fastapi.FastAPIInstrumentor",
+        "opentelemetry.sdk.resources.Resource",
+        "config.settings",
+        "httpx",
+        "routers.citizen_router.router"
+      ],
+      "classes": [],
+      "functions": [
+        "lifespan",
+        "correlation_middleware",
+        "global_exception_handler"
+      ],
+      "endpoints": [
+        {
+          "function": "liveness",
+          "method": "GET",
+          "path": "/health/live"
+        },
+        {
+          "function": "readiness",
+          "method": "GET",
+          "path": "/health/ready"
+        }
+      ]
+    },
+    {
+      "file": "backend/citizen-bff/response_helpers.py",
+      "imports": [
+        "uuid",
+        "datetime.datetime",
+        "datetime.timezone",
+        "typing.Any"
+      ],
+      "classes": [],
+      "functions": [
+        "success_response",
+        "error_response"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/citizen-bff/security/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/citizen-bff/security/jwt.py",
+      "imports": [
+        "uuid",
+        "typing.Optional",
+        "fastapi.Depends",
+        "fastapi.HTTPException",
+        "fastapi.Request",
+        "fastapi.status",
+        "fastapi.security.HTTPAuthorizationCredentials",
+        "fastapi.security.HTTPBearer",
+        "jose.JWTError",
+        "jose.jwt",
+        "config.settings",
+        "models.schemas.CurrentUser"
+      ],
+      "classes": [],
+      "functions": [
+        "decode_token",
+        "get_current_user",
+        "get_optional_user",
+        "require_role",
+        "_check_role"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/citizen-bff/routers/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/citizen-bff/routers/citizen_router.py",
+      "imports": [
+        "uuid",
+        "typing.Optional",
+        "httpx",
+        "fastapi.APIRouter",
+        "fastapi.Depends",
+        "fastapi.Header",
+        "fastapi.HTTPException",
+        "fastapi.Request",
+        "clients.case_client.get_case_client",
+        "clients.bot_client.get_bot_client",
+        "clients.evidence_client.get_evidence_client",
+        "response_helpers.error_response",
+        "response_helpers.success_response",
+        "security.jwt.get_current_user",
+        "security.jwt.get_optional_user",
+        "json",
+        "uuid"
+      ],
+      "classes": [],
+      "functions": [
+        "_corr",
+        "_forward_headers",
+        "_proxy"
+      ],
+      "endpoints": [
+        {
+          "function": "submit_report",
+          "method": "POST",
+          "path": "/report"
+        },
+        {
+          "function": "get_case_status",
+          "method": "GET",
+          "path": "/cases/{case_id}"
+        },
+        {
+          "function": "bot_message",
+          "method": "POST",
+          "path": "/bot/message"
+        },
+        {
+          "function": "get_bot_session",
+          "method": "GET",
+          "path": "/bot/session/{session_id}"
+        },
+        {
+          "function": "upload_evidence",
+          "method": "POST",
+          "path": "/cases/{case_id}/evidence"
+        },
+        {
+          "function": "confirm_evidence",
+          "method": "POST",
+          "path": "/evidence/{evidence_id}/confirm"
+        }
+      ]
+    },
+    {
+      "file": "backend/citizen-bff/models/schemas.py",
+      "imports": [
+        "uuid",
+        "typing.Optional",
+        "pydantic.BaseModel"
+      ],
+      "classes": [
+        {
+          "name": "CurrentUser",
+          "methods": []
+        }
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/citizen-bff/clients/evidence_client.py",
+      "imports": [
+        "httpx",
+        "fastapi.Request"
+      ],
+      "classes": [],
+      "functions": [
+        "get_evidence_client"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/citizen-bff/clients/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/citizen-bff/clients/case_client.py",
+      "imports": [
+        "httpx",
+        "fastapi.Request"
+      ],
+      "classes": [],
+      "functions": [
+        "get_case_client"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/citizen-bff/clients/bot_client.py",
+      "imports": [
+        "httpx",
+        "fastapi.Request"
+      ],
+      "classes": [],
+      "functions": [
+        "get_bot_client"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/citizen-bff/tests/conftest.py",
+      "imports": [
+        "pytest",
+        "unittest.mock.AsyncMock",
+        "unittest.mock.MagicMock",
+        "httpx.AsyncClient",
+        "httpx.ASGITransport",
+        "httpx.Response",
+        "main.app",
+        "httpx",
+        "uuid"
+      ],
+      "classes": [],
+      "functions": [
+        "mock_case_client",
+        "mock_bot_client",
+        "mock_evidence_client_offline",
+        "async_client",
+        "auth_headers"
+      ],
+      "endpoints": []
+    },
+    {
+      "file": "backend/citizen-bff/tests/__init__.py",
+      "imports": [],
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "file": "backend/citizen-bff/tests/test_citizen_bff.py",
+      "imports": [
+        "uuid",
+        "unittest.mock.AsyncMock",
+        "httpx.Response",
+        "pytest",
+        "main.app",
+        "security.jwt.get_current_user",
+        "clients.case_client.get_case_client",
+        "main.app",
+        "security.jwt.get_current_user",
+        "clients.case_client.get_case_client",
+        "json",
+        "main.app",
+        "security.jwt.get_current_user",
+        "clients.case_client.get_case_client",
+        "main.app",
+        "security.jwt.get_current_user",
+        "clients.evidence_client.get_evidence_client",
+        "main.app",
+        "security.jwt.get_current_user",
+        "clients.bot_client.get_bot_client"
+      ],
+      "classes": [
+        {
+          "name": "TestReportProxy",
+          "methods": [
+            "test_report_proxied_to_case_service",
+            "test_correlation_id_forwarded",
+            "test_user_context_forwarded"
+          ]
+        },
+        {
+          "name": "TestEvidenceServiceOffline",
+          "methods": [
+            "test_evidence_upload_returns_503_when_offline"
+          ]
+        },
+        {
+          "name": "TestBotProxy",
+          "methods": [
+            "test_bot_message_proxied"
+          ]
+        },
+        {
+          "name": "TestHealthEndpoints",
+          "methods": [
+            "test_liveness"
+          ]
+        }
+      ],
+      "functions": [
+        "test_report_proxied_to_case_service",
+        "test_correlation_id_forwarded",
+        "test_user_context_forwarded",
+        "test_evidence_upload_returns_503_when_offline",
+        "test_bot_message_proxied",
+        "test_liveness"
+      ],
+      "endpoints": []
+    }
+  ]
+}
