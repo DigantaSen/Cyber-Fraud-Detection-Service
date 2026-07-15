@@ -342,6 +342,10 @@ services:
     environment:
       SERVICE_NAME: ml-scam-nlp
       MODEL_VERSION: stub-v0.1
+      SCAM_NLP_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: llama3:latest
+      OLLAMA_TIMEOUT_SECONDS: 45
     ports:
       - "8100:8000"
     networks:
