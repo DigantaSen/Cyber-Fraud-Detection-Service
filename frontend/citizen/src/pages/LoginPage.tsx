@@ -23,7 +23,9 @@ export default function LoginPage() {
         const { access_token } = response.data.data;
         
         // Decode JWT payload to extract userId and role for the store
-        const payloadStr = atob(access_token.split('.')[1]);
+        const base64Url = access_token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const payloadStr = atob(base64);
         const payload = JSON.parse(payloadStr);
         
         setTokens(access_token, payload.user_id || payload.sub, payload.role);

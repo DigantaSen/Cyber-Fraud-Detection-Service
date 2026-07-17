@@ -33,8 +33,8 @@ class TestCreateCase:
                 headers=valid_jwt_headers,
             )
             # Missing idempotency key → error response
-            assert response.status_code == 201
-            assert response.json().get("errorCode") == "MISSING_IDEMPOTENCY_KEY"
+            assert response.status_code == 400
+            assert response.json()["detail"].get("errorCode") == "MISSING_IDEMPOTENCY_KEY"
         finally:
             app.dependency_overrides.clear()
 

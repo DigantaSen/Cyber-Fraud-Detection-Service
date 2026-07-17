@@ -67,7 +67,7 @@ export default function ReportForm() {
 const complaintTypes = [
   { id: 'UPI_FRAUD', label: 'UPI Fraud', icon: '💳' },
   { id: 'CALL_FRAUD', label: 'Call Fraud', icon: '📞' },
-  { id: 'CURRENCY_FRAUD', label: 'Counterfeit Currency', icon: '💵' },
+  { id: 'COUNTERFEIT_CURRENCY', label: 'Counterfeit Currency', icon: '💵' },
   { id: 'CYBER_CRIME', label: 'Cyber Crime', icon: '🖥️' },
   { id: 'OTHER', label: 'Other', icon: '❓' },
 ];

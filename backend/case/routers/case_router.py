@@ -44,11 +44,25 @@ async def create_case(
     db=Depends(get_db),
 ):
     if not idempotency_key:
-        return error_response("MISSING_IDEMPOTENCY_KEY", "Idempotency-Key header is required", _corr(request))
+        raise HTTPException(
+            status_code=400,
+            detail=error_response("MISSING_IDEMPOTENCY_KEY", "Idempotency-Key header is required", _corr(request))
+        )
     try:
         idem_uuid = uuid.UUID(idempotency_key)
     except ValueError:
-        return error_response("INVALID_IDEMPOTENCY_KEY", "Idempotency-Key must be a UUID", _corr(request))
+        raise HTTPException(
+            status_code=400,
+            detail=error_response("INVALID_IDEMPOTENCY_KEY", "Idempotency-Key must be a UUID", _corr(request))
+        )
+
+    try:
+        corr_uuid = uuid.UUID(_corr(request))
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=error_response("INVALID_CORRELATION_ID", "X-Correlation-ID must be a valid UUID", _corr(request))
+        )
 
     svc = CaseService(db)
     try:
@@ -56,7 +70,7 @@ async def create_case(
             req=body,
             reporter_user_id=current_user.user_id,
             jurisdiction_id=current_user.jurisdiction_id or "",
-            correlation_id=uuid.UUID(_corr(request)),
+            correlation_id=corr_uuid,
             idempotency_key=idem_uuid,
         )
         return success_response(result.model_dump(mode="json", by_alias=True), _corr(request))

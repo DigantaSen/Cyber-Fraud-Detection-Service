@@ -12,7 +12,7 @@ class TestReportProxy:
     async def test_report_proxied_to_case_service(self, async_client, mock_case_client, auth_headers):
         """POST /citizen/report should proxy to Case Service."""
         from main import app
-        from security.jwt import get_current_user
+        from security.jwt import get_current_user, get_optional_user
         from clients.case_client import get_case_client
         
         user_mock = AsyncMock()
@@ -21,6 +21,7 @@ class TestReportProxy:
         user_mock.jti = "test"
         
         app.dependency_overrides[get_current_user] = lambda: user_mock
+        app.dependency_overrides[get_optional_user] = lambda: user_mock
         app.dependency_overrides[get_case_client] = lambda: mock_case_client
         
         try:
