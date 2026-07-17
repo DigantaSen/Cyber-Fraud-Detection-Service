@@ -407,6 +407,12 @@ services:
     environment:
       SERVICE_NAME: ml-audio-analyzer
       MODEL_VERSION: stub-v0.1
+      AUDIO_ANALYZER_PROVIDER: groq
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_WHISPER_MODEL: whisper-large-v3
+      GROQ_AUDIO_LLM_MODEL: meta-llama/llama-4-scout-17b-16e-instruct
+      GROQ_WHISPER_TIMEOUT_SECONDS: 60
+      GROQ_TIMEOUT_SECONDS: 45
     ports:
       - "8103:8000"
     networks:
