@@ -109,6 +109,12 @@ T4c
 feat(bffs): complete T4c Bank, Telecom, and Gov BFFs
 ```
 
+T8f
+
+```
+feat(search): complete T8f OpenSearch Kafka Consumer service
+```
+
 ...
 
 ## Surjit

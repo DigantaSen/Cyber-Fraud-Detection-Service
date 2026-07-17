@@ -467,6 +467,56 @@ services:
       disable: true
 
   # ──────────────────────────────────────────────────────────
+  # Search Service (T8f) — CQRS Read Model
+  # Two pods: API server + headless Kafka consumer/indexer
+  # ──────────────────────────────────────────────────────────
+  search:
+    build:
+      context: ./backend/search
+    container_name: platform-search
+    restart: unless-stopped
+    environment:
+      OPENSEARCH_URL: "http://opensearch:9200"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+    ports:
+      - "8006:8000"
+    networks:
+      - platform-net
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  search-consumer:
+    build:
+      context: ./backend/search
+    container_name: platform-search-consumer
+    restart: unless-stopped
+    command: ["python", "indexer.py"]
+    environment:
+      OPENSEARCH_URL: "http://opensearch:9200"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "search-indexer"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # ──────────────────────────────────────────────────────────
   # Kong — API Gateway (DB-less Declarative Mode)
   # JWT validation, rate limiting, correlation-id on every route
   # ──────────────────────────────────────────────────────────

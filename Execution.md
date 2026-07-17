@@ -224,7 +224,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 - **Deliverable:** POST /notify/send (SMS/Email/Push — stubbed initially), POST /notify/mha-alert (high-priority queue, <5s SLO), GET /notify/preferences/:userId. SSE for real-time push. Publishes MHAAlert.Sent. **MHA channel uses a dedicated Kafka consumer group with highest priority — separate from standard citizen notification consumer to prevent head-of-line blocking.**
 - **Effort:** 1.5 days | **Owner:** Nilkanta
 
-### T8f — Search Service (OpenSearch Kafka Consumer)
+### ✅ T8f — Search Service (OpenSearch Kafka Consumer) - COMPLETED
 - **Purpose:** CQRS read model for case + evidence search (FR-9). Indexes events into OpenSearch asynchronously — services query this instead of heavy PostgreSQL LIKE queries. | **Depends On:** T8b, T3c. **Unlocks:** T6c, T16.
 - **Docs:** [api/search.md](docs/api/search.md), [db/opensearch.json](docs/db/opensearch.json)
 - **Deliverable:**
