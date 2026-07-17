@@ -1,4 +1,4 @@
-# Search Service — API Contract
+# ✅ Search Service — API Contract (IMPLEMENTED)
 **Service:** `search` | **Port:** 8000 | **Owner:** Diganta | **Task:** T8f
 **Kong prefix:** `/api/v1/search` (JWT required, direct exposure — no BFF)
 
