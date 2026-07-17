@@ -22,7 +22,9 @@ SCAM_NLP_RULES_VERSION = os.getenv("SCAM_NLP_RULES_VERSION", "rules-v0.1")
 COUNTERFEIT_CV_PROVIDER = os.getenv("COUNTERFEIT_CV_PROVIDER", "groq").lower()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
-GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+GROQ_VISION_MODEL = os.getenv(
+    "GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
+)
 GROQ_TIMEOUT_SECONDS = float(os.getenv("GROQ_TIMEOUT_SECONDS", "45"))
 
 SUPPORTED_LANGUAGES = {
@@ -88,9 +90,18 @@ SCAM_RULES = [
 
 CATEGORY_RULES = [
     ("UPI_SCAM", r"\b(upi|gpay|phonepe|paytm|qr|collect request|यूपीआई)\b"),
-    ("IMPERSONATION_FRAUD", r"\b(police|cbi|rbi|bank officer|customs|income tax|fir|arrest|पुलिस|सीबीआई|आरबीआई|गिरफ्तार)\b"),
-    ("INVESTMENT_FRAUD", r"\b(invest|investment|double money|guaranteed return|crypto|trading|profit|निवेश|मुनाफा)\b"),
-    ("LOTTERY_SCAM", r"\b(lottery|winner|prize|reward|cashback|gift|लॉटरी|इनाम|पुरस्कार)\b"),
+    (
+        "IMPERSONATION_FRAUD",
+        r"\b(police|cbi|rbi|bank officer|customs|income tax|fir|arrest|पुलिस|सीबीआई|आरबीआई|गिरफ्तार)\b",
+    ),
+    (
+        "INVESTMENT_FRAUD",
+        r"\b(invest|investment|double money|guaranteed return|crypto|trading|profit|निवेश|मुनाफा)\b",
+    ),
+    (
+        "LOTTERY_SCAM",
+        r"\b(lottery|winner|prize|reward|cashback|gift|लॉटरी|इनाम|पुरस्कार)\b",
+    ),
     ("ROMANCE_SCAM", r"\b(love|romance|friendship|marriage|dating|प्यार|दोस्ती|शादी)\b"),
 ]
 
@@ -118,7 +129,9 @@ class ScamClassifyRequest(BaseModel):
     @classmethod
     def language_must_be_supported(cls, value: str) -> str:
         if value not in SUPPORTED_LANGUAGES:
-            raise ValueError("languageCode must be one of the supported BCP-47 language codes")
+            raise ValueError(
+                "languageCode must be one of the supported BCP-47 language codes"
+            )
         return value
 
 
@@ -324,7 +337,9 @@ def classify_scam_text(request: ScamClassifyRequest) -> dict[str, Any]:
         "category": category,
         "confidence": round(confidence, 2),
         "signals": signals[:5],
-        "explanation": build_scam_explanation(score, category, signals, request.languageCode),
+        "explanation": build_scam_explanation(
+            score, category, signals, request.languageCode
+        ),
         "modelVersion": SCAM_NLP_RULES_VERSION,
     }
 
@@ -336,8 +351,13 @@ def classify_scam_text_safely(request: ScamClassifyRequest) -> dict[str, Any]:
         except Exception as exc:
             response = classify_scam_text(request)
             response["modelVersion"] = "rules-fallback-v0.1"
-            response["signals"] = [*response["signals"][:4], f"ollama unavailable: {type(exc).__name__}"]
-            response["explanation"] = f"{response['explanation']} Ollama unavailable; used local fallback."
+            response["signals"] = [
+                *response["signals"][:4],
+                f"ollama unavailable: {type(exc).__name__}",
+            ]
+            response["explanation"] = (
+                f"{response['explanation']} Ollama unavailable; used local fallback."
+            )
             return response
 
     return classify_scam_text(request)
@@ -406,7 +426,9 @@ Complaint text:
 """.strip()
 
 
-def build_scam_explanation(score: int, category: str, signals: list[str], language_code: str) -> str:
+def build_scam_explanation(
+    score: int, category: str, signals: list[str], language_code: str
+) -> str:
     if signals == ["no strong scam pattern detected"]:
         return f"Low signal text: no major scam indicators were found. Language: {language_code}."
 
@@ -467,7 +489,11 @@ def analyze_counterfeit_with_groq(request: CounterfeitDetectRequest) -> dict[str
         raise RuntimeError("GROQ_API_KEY is not configured")
 
     image_mime = detect_image_mime(request.imageBase64)
-    image_payload = request.imageBase64.partition(",")[2] if request.imageBase64.startswith("data:") else request.imageBase64
+    image_payload = (
+        request.imageBase64.partition(",")[2]
+        if request.imageBase64.startswith("data:")
+        else request.imageBase64
+    )
     prompt = build_groq_counterfeit_prompt(request.denomination)
     payload = {
         "model": GROQ_VISION_MODEL,
@@ -496,7 +522,9 @@ def analyze_counterfeit_with_groq(request: CounterfeitDetectRequest) -> dict[str
     }
 
     with httpx.Client(timeout=GROQ_TIMEOUT_SECONDS) as client:
-        response = client.post(f"{GROQ_BASE_URL}/chat/completions", headers=headers, json=payload)
+        response = client.post(
+            f"{GROQ_BASE_URL}/chat/completions", headers=headers, json=payload
+        )
         response.raise_for_status()
 
     raw_content = response.json()["choices"][0]["message"]["content"]
@@ -571,13 +599,11 @@ def analyze_graph_features(request: GraphAnalyzeRequest) -> dict[str, Any]:
             repeated_relation_count += 1
 
     high_risk_nodes = [
-        node for node in nodes
+        node
+        for node in nodes
         if node.fraudScore is not None and float(node.fraudScore) >= 70
     ]
-    hub_nodes = [
-        node for node in nodes
-        if degree.get(node.id, 0) >= 3
-    ]
+    hub_nodes = [node for node in nodes if degree.get(node.id, 0) >= 3]
     anchor_degree = degree.get(request.anchorEntityId, 0)
     node_count = len(nodes)
     edge_count = len(edges)
@@ -594,27 +620,37 @@ def analyze_graph_features(request: GraphAnalyzeRequest) -> dict[str, Any]:
 
     suspicious_nodes = []
     seen = set()
-    for node in sorted(high_risk_nodes, key=lambda item: float(item.fraudScore or 0), reverse=True):
-        suspicious_nodes.append({
-            "id": node.id,
-            "fraudScore": node.fraudScore or 0,
-            "reason": "High prior fraud score in graph neighborhood",
-        })
+    for node in sorted(
+        high_risk_nodes, key=lambda item: float(item.fraudScore or 0), reverse=True
+    ):
+        suspicious_nodes.append(
+            {
+                "id": node.id,
+                "fraudScore": node.fraudScore or 0,
+                "reason": "High prior fraud score in graph neighborhood",
+            }
+        )
         seen.add(node.id)
 
-    for node in sorted(hub_nodes, key=lambda item: degree.get(item.id, 0), reverse=True):
+    for node in sorted(
+        hub_nodes, key=lambda item: degree.get(item.id, 0), reverse=True
+    ):
         if node.id in seen:
             continue
-        suspicious_nodes.append({
-            "id": node.id,
-            "fraudScore": node.fraudScore or 0,
-            "reason": f"Hub node with {degree.get(node.id, 0)} graph connections",
-        })
+        suspicious_nodes.append(
+            {
+                "id": node.id,
+                "fraudScore": node.fraudScore or 0,
+                "reason": f"Hub node with {degree.get(node.id, 0)} graph connections",
+            }
+        )
         seen.add(node.id)
 
     signals = []
     if high_risk_nodes:
-        signals.append(f"{len(high_risk_nodes)} high-risk node(s) with fraudScore >= 70")
+        signals.append(
+            f"{len(high_risk_nodes)} high-risk node(s) with fraudScore >= 70"
+        )
     if hub_nodes:
         signals.append(f"{len(hub_nodes)} hub node(s) with 3+ connections")
     if anchor_degree:
@@ -622,7 +658,9 @@ def analyze_graph_features(request: GraphAnalyzeRequest) -> dict[str, Any]:
     if density >= 0.35 and node_count >= 3:
         signals.append(f"dense graph neighborhood detected (density={density:.2f})")
     if repeated_relation_count:
-        signals.append(f"{repeated_relation_count} repeated relation(s) with count >= 5")
+        signals.append(
+            f"{repeated_relation_count} repeated relation(s) with count >= 5"
+        )
     if not signals:
         signals.append("no strong graph fraud pattern detected")
 
