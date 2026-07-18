@@ -527,6 +527,57 @@ services:
       disable: true
 
   # ──────────────────────────────────────────────────────────
+  # Audit Service (T7) — Immutable Ledger (NFR-6.1)
+  # Two pods: API server (read-only) + headless Kafka consumer (write-only)
+  # DB: audit.audit_log in primary postgres — append-only via trigger
+  # ──────────────────────────────────────────────────────────
+  audit:
+    build:
+      context: ./backend/audit
+    container_name: platform-audit
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+    ports:
+      - "8007:8000"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  audit-consumer:
+    build:
+      context: ./backend/audit
+    container_name: platform-audit-consumer
+    restart: unless-stopped
+    command: ["python", "consumer.py"]
+    environment:
+      DATABASE_URL: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "audit-consumer"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # ──────────────────────────────────────────────────────────
   # Kong — API Gateway (DB-less Declarative Mode)
   # JWT validation, rate limiting, correlation-id on every route
   # ──────────────────────────────────────────────────────────
