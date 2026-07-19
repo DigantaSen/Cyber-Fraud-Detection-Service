@@ -365,6 +365,10 @@ services:
     environment:
       SERVICE_NAME: ml-counterfeit-cv
       MODEL_VERSION: stub-v0.1
+      COUNTERFEIT_CV_PROVIDER: groq
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_VISION_MODEL: meta-llama/llama-4-scout-17b-16e-instruct
+      GROQ_TIMEOUT_SECONDS: 45
     ports:
       - "8101:8000"
     networks:
@@ -403,6 +407,12 @@ services:
     environment:
       SERVICE_NAME: ml-audio-analyzer
       MODEL_VERSION: stub-v0.1
+      AUDIO_ANALYZER_PROVIDER: groq
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_WHISPER_MODEL: whisper-large-v3
+      GROQ_AUDIO_LLM_MODEL: meta-llama/llama-4-scout-17b-16e-instruct
+      GROQ_WHISPER_TIMEOUT_SECONDS: 60
+      GROQ_TIMEOUT_SECONDS: 45
     ports:
       - "8103:8000"
     networks:
@@ -455,6 +465,107 @@ services:
     environment:
       DSN: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # ──────────────────────────────────────────────────────────
+  # Search Service (T8f) — CQRS Read Model
+  # Two pods: API server + headless Kafka consumer/indexer
+  # ──────────────────────────────────────────────────────────
+  search:
+    build:
+      context: ./backend/search
+    container_name: platform-search
+    restart: unless-stopped
+    environment:
+      OPENSEARCH_URL: "http://opensearch:9200"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+    ports:
+      - "8006:8000"
+    networks:
+      - platform-net
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  search-consumer:
+    build:
+      context: ./backend/search
+    container_name: platform-search-consumer
+    restart: unless-stopped
+    command: ["python", "indexer.py"]
+    environment:
+      OPENSEARCH_URL: "http://opensearch:9200"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "search-indexer"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # ──────────────────────────────────────────────────────────
+  # Audit Service (T7) — Immutable Ledger (NFR-6.1)
+  # Two pods: API server (read-only) + headless Kafka consumer (write-only)
+  # DB: audit.audit_log in primary postgres — append-only via trigger
+  # ──────────────────────────────────────────────────────────
+  audit:
+    build:
+      context: ./backend/audit
+    container_name: platform-audit
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+    ports:
+      - "8007:8000"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  audit-consumer:
+    build:
+      context: ./backend/audit
+    container_name: platform-audit-consumer
+    restart: unless-stopped
+    command: ["python", "consumer.py"]
+    environment:
+      DATABASE_URL: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "audit-consumer"
       LOG_LEVEL: "INFO"
     networks:
       - platform-net

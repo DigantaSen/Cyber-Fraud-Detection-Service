@@ -224,7 +224,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 - **Deliverable:** POST /notify/send (SMS/Email/Push — stubbed initially), POST /notify/mha-alert (high-priority queue, <5s SLO), GET /notify/preferences/:userId. SSE for real-time push. Publishes MHAAlert.Sent. **MHA channel uses a dedicated Kafka consumer group with highest priority — separate from standard citizen notification consumer to prevent head-of-line blocking.**
 - **Effort:** 1.5 days | **Owner:** Nilkanta
 
-### T8f — Search Service (OpenSearch Kafka Consumer)
+### ✅ T8f — Search Service (OpenSearch Kafka Consumer) - COMPLETED
 - **Purpose:** CQRS read model for case + evidence search (FR-9). Indexes events into OpenSearch asynchronously — services query this instead of heavy PostgreSQL LIKE queries. | **Depends On:** T8b, T3c. **Unlocks:** T6c, T16.
 - **Docs:** [api/search.md](docs/api/search.md), [db/opensearch.json](docs/db/opensearch.json)
 - **Deliverable:**
@@ -234,10 +234,15 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
   - **Scalability:** OpenSearch horizontal scaling via shard routing (1 shard locally; 3 shards + 1 replica in production). Consumer group allows up to 12 pods to index in parallel (one per partition).
 - **Effort:** 1 day | **Owner:** Diganta
 
-### T7 — Audit Service
+### ✅ T7 — Audit Service - COMPLETED
 - **Purpose:** Immutable ledger — legal admissibility (NFR-6.1). | **Depends On:** T3c, T8b. **Unlocks:** T16, T6b.
 - **Docs:** [api/audit.md](docs/api/audit.md), [db/postgres.sql](docs/db/postgres.sql), [06-investigator-override-audit.md](docs/architecture/sequences/06-investigator-override-audit.md)
-- **Deliverable:** Kafka consumer on all state-change events. Append-only PostgreSQL audit_log (no UPDATE/DELETE). GET /audit/case/:id.
+- **Deliverable:**
+  - **`audit-consumer` pod** — Kafka consumer group `audit-consumer` on **12 domain event topics** (`case.created`, `case.updated`, `evidence.uploaded`, `evidence.verified`, `prediction.completed`, `prediction.overridden`, `mhaalert.sent`, `user.created`, `user.updated`, `intervention.created`, `intelligencepackage.created`, `report.generated`). Appends every event to `audit.audit_log` — the only write path in this service. 3-retry + exponential backoff + DLQ routing.
+  - **`audit` API pod** — FastAPI read-only API at port `8007`. `GET /api/v1/audit/case/{caseId}` (full chronological trail, cursor-paginated) and `GET /api/v1/audit/entity/{entityId}` (any entity, with `entityType`/`from`/`to` filters). RBAC enforces `INVESTIGATOR` or `ADMIN` role via `X-User-Role` header (forwarded by Kong JWT plugin).
+  - **DB:** `audit.audit_log` in primary PostgreSQL — protected by `platform.prevent_mutation()` trigger (no UPDATE/DELETE possible at DB level). Indexes on `(entity_id, created_at DESC)`, `(event_type, created_at DESC)`, `(correlation_id)`.
+  - **Kong:** Route `/api/v1/audit` registered with JWT plugin in `infra/kong/kong.yml`.
+  - **Smoke test:** `backend/audit/smoke_test.ps1` — 15 assertions, all passing.
 - **Effort:** 1 day | **Owner:** Diganta
 
 ### T8 — Inference Orchestrator Service
