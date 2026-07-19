@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investigator Dashboard | Cyber Fraud Intelligence</title>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Leaflet (Geo Heatmap) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar: Case Queue -->
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-header">
+                <h2>Investigator AI</h2>
+                <div class="live-indicator">
+                    <span class="dot"></span> Live Queue
+                </div>
+            </div>
+            
+            <div class="case-queue" id="caseQueue">
+                <!-- Cases will be injected here via JS -->
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="workspace">
+            <!-- Header -->
+            <header class="workspace-header glass-panel">
+                <div class="case-meta">
+                    <h1 id="activeCaseId">Select a case to begin</h1>
+                    <span id="activeCaseStatus" class="badge">AWAITING REVIEW</span>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-secondary" id="btnIntelPackage" disabled>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        Generate Intelligence Package
+                    </button>
+                </div>
+            </header>
+
+            <!-- Grid Layout for Panels -->
+            <div class="dashboard-grid">
+                
+                <!-- AI Verdict & Model Breakdown -->
+                <div class="panel glass-panel span-full">
+                    <div class="panel-header">
+                        <h3>AI Verdict & Confidence</h3>
+                    </div>
+                    <div class="panel-body ai-breakdown">
+                        <div class="verdict-card">
+                            <h4>Overall Verdict</h4>
+                            <div class="verdict-score" id="aiVerdictScore">--%</div>
+                            <div class="verdict-label" id="aiVerdictLabel">PENDING</div>
+                        </div>
+                        <div class="model-factors" id="modelFactors">
+                            <!-- Model factors injected via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Entity Graph Visualization -->
+                <div class="panel glass-panel">
+                    <div class="panel-header">
+                        <h3>Entity Graph Visualization</h3>
+                    </div>
+                    <div class="panel-body" id="graphContainer">
+                        <!-- Vis.js network will be rendered here -->
+                    </div>
+                </div>
+
+                <!-- Geo Heatmap -->
+                <div class="panel glass-panel">
+                    <div class="panel-header">
+                        <h3>Geospatial Heatmap</h3>
+                    </div>
+                    <div class="panel-body" id="mapContainer">
+                        <!-- Leaflet map will be rendered here -->
+                    </div>
+                </div>
+
+                <!-- HITL (Human-In-The-Loop) Panel -->
+                <div class="panel glass-panel span-full hitl-panel">
+                    <div class="panel-header">
+                        <h3>Human-In-The-Loop (HITL) Review</h3>
+                    </div>
+                    <div class="panel-body form-container">
+                        <form id="hitlForm">
+                            <div class="form-group">
+                                <label for="justification">Investigator Justification (Mandatory)</label>
+                                <textarea id="justification" rows="3" placeholder="Provide detailed reasoning for approval or rejection based on the evidence..." required></textarea>
+                            </div>
+                            <div class="hitl-actions">
+                                <button type="button" class="btn btn-danger" id="btnReject">
+                                    Reject & Close
+                                </button>
+                                <button type="button" class="btn btn-success" id="btnApprove">
+                                    Approve & Escalate
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    
+    <!-- App Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
