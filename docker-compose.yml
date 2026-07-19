@@ -425,6 +425,58 @@ services:
       start_period: 10s
 
   # ──────────────────────────────────────────────────────────
+  # ClamAV — Malware Scanning (Evidence Service)
+  # ──────────────────────────────────────────────────────────
+  clamav:
+    image: clamav/clamav:latest
+    container_name: platform-clamav
+    restart: unless-stopped
+    ports:
+      - "3310:3310"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ──────────────────────────────────────────────────────────
+  # Evidence Service
+  # ──────────────────────────────────────────────────────────
+  evidence-service:
+    build:
+      context: ./backend/evidence
+    container_name: platform-evidence
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      MINIO_ENDPOINT: "http://minio:9000"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change_me_minio}
+      MINIO_BUCKET: ${MINIO_BUCKET_EVIDENCE:-evidence}
+      CLAMAV_HOST: "clamav"
+      CLAMAV_PORT: "3310"
+    ports:
+      - "8006:8000"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      clamav:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ──────────────────────────────────────────────────────────
   # Event Processing Service & Outbox Publisher
   # ──────────────────────────────────────────────────────────
   event-processing:
