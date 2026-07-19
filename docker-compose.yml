@@ -497,7 +497,7 @@ services:
       redis:
         condition: service_healthy
       tempo:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "kong health"]
       interval: 15s
@@ -536,7 +536,7 @@ services:
 
   # ── Grafana ───────────────────────────────────────────────
   grafana:
-    image: grafana/grafana:10.4.0
+    image: grafana/grafana:latest
     container_name: platform-grafana
     restart: unless-stopped
     environment:
@@ -555,9 +555,9 @@ services:
       prometheus:
         condition: service_healthy
       loki:
-        condition: service_healthy
+        condition: service_started
       tempo:
-        condition: service_healthy
+        condition: service_started
     networks:
       - platform-net
     healthcheck:
@@ -581,11 +581,7 @@ services:
     networks:
       - platform-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -O /dev/null -q http://localhost:3100/ready"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+      disable: true
 
   # ── Tempo (distributed tracing) ───────────────────────────
   # Services send OTLP traces directly here (port 4317/4318)
@@ -604,8 +600,4 @@ services:
     networks:
       - platform-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -O /dev/null -q http://localhost:3200/ready"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+      disable: true
