@@ -31,24 +31,9 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import text
-
-# ─── OpenTelemetry (auto-instrument BEFORE app creation) ─────────────────────
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.sdk.resources import Resource
-
 from config import settings
 
-# ─── Tracer setup ─────────────────────────────────────────────────────────────
-resource = Resource.create({"service.name": settings.SERVICE_NAME, "service.version": settings.SERVICE_VERSION})
-tracer_provider = TracerProvider(resource=resource)
-tracer_provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint=settings.OTEL_ENDPOINT))
-)
-trace.set_tracer_provider(tracer_provider)
+# OTel temporarily disabled due to pkg_resources issue
 
 # ─── Logging (structured JSON via loguru) ─────────────────────────────────────
 logger.remove()
@@ -96,7 +81,7 @@ app = FastAPI(
 )
 
 # Auto-instrument FastAPI with OTel
-FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider)
+# FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer_provider)
 
 # ─── CORS ────────────────────────────────────────────────────────────────────
 # Bug Fix T18-A: CORS was missing — Citizen/Bank/Telecom UIs were blocked.
@@ -126,8 +111,7 @@ async def correlation_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
 
     # Bind trace context to logger for this request
-    span_context = trace.get_current_span().get_span_context()
-    otel_trace_id = f"{span_context.trace_id:032x}" if span_context.is_valid else "—"
+    otel_trace_id = "—"
     req_logger = logger.bind(
         trace_id=otel_trace_id,
         correlation_id=correlation_id,
