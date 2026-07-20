@@ -1,0 +1,5 @@
+# Only needed to (re)build the model via build_edge_model.py — not shipped
+# to the offline mobile/POS runtime.
+scikit-learn>=1.4
+skl2onnx>=1.16
+onnx>=1.16
