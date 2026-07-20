@@ -1,8 +1,6 @@
 import { useSessions, useSessionAlerts } from '../api/sessions';
 import type { CallSession } from '../api/sessions';
-
-// Mock token — in production, read from localStorage or auth flow
-const MOCK_TOKEN = import.meta.env.VITE_TELECOM_TOKEN || 'dummy-token';
+import type { AuthUser } from '../hooks/useAuth';
 
 const TIER_COLORS: Record<string, string> = {
   LOW: 'bg-green-100 text-green-800',
@@ -55,8 +53,13 @@ function SessionRow({ session }: { session: CallSession }) {
   );
 }
 
-export default function ActiveSessionsPage() {
-  const token = MOCK_TOKEN;
+interface Props {
+  token: string;
+  user: AuthUser | null;
+  onLogout: () => void;
+}
+
+export default function ActiveSessionsPage({ token, user, onLogout }: Props) {
   const { data: sessions = [], isLoading, error } = useSessions(token);
   const { alerts, connected } = useSessionAlerts(token);
 
@@ -71,9 +74,26 @@ export default function ActiveSessionsPage() {
             <p className="text-gray-400 text-xs">Cyber Fraud Detection — Telecom Operator View</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
-          <span className="text-xs text-gray-400">{connected ? 'Live' : 'Reconnecting...'}</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
+            <span className="text-xs text-gray-400">{connected ? 'Live' : 'Reconnecting...'}</span>
+          </div>
+          {user && (
+            <div className="flex items-center gap-3 border-l border-gray-700 pl-4">
+              <div className="text-right">
+                <p className="text-xs font-semibold text-white">{user.email}</p>
+                <p className="text-xs text-blue-400">{user.role}</p>
+              </div>
+              <button
+                id="telecom-logout-btn"
+                onClick={onLogout}
+                className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 hover:text-white border border-gray-700 transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          )}
         </div>
       </header>
 

@@ -1,0 +1,8 @@
+# Offline edge-inference footprint (mobile / POS terminal): kept intentionally
+# minimal, no torch/tensorflow. Only needed at inference time.
+numpy==2.2.6
+Pillow==12.2.0
+onnxruntime==1.23.2
+
+# Training/export-only dependencies (not needed at inference time):
+# scikit-learn, skl2onnx, onnx -- see build_edge_model.py

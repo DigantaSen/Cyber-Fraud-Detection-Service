@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTransactions, useBlockTransaction } from '../api/transactions';
 import type { FlaggedTransaction, RiskTier, TxStatus } from '../api/transactions';
+import type { AuthUser } from '../hooks/useAuth';
 
 const TIER_CONFIG: Record<RiskTier, { bg: string; text: string; dot: string }> = {
   LOW:      { bg: 'bg-green-50',  text: 'text-green-800',  dot: 'bg-green-500' },
@@ -134,11 +135,17 @@ function TransactionCard({ tx, onBlock }: { tx: FlaggedTransaction; onBlock: (id
   );
 }
 
-export default function FlaggedTransactionsPage() {
+interface Props {
+  token: string;
+  user: AuthUser | null;
+  onLogout: () => void;
+}
+
+export default function FlaggedTransactionsPage({ token, user, onLogout }: Props) {
   const [filterTier, setFilterTier] = useState<RiskTier | undefined>();
   const [filterStatus, setFilterStatus] = useState<TxStatus | undefined>();
-  const { data: transactions = [], isLoading, error } = useTransactions(filterTier, filterStatus);
-  const blockMutation = useBlockTransaction();
+  const { data: transactions = [], isLoading, error } = useTransactions(token, filterTier, filterStatus);
+  const blockMutation = useBlockTransaction(token);
 
   const handleBlock = (id: string, reason: string) => {
     blockMutation.mutate({ transactionId: id, reason });
@@ -155,9 +162,26 @@ export default function FlaggedTransactionsPage() {
             <p className="text-xs text-gray-400">Cyber Fraud Detection — Bank Officer View</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          <span className="text-xs text-gray-500">Auto-refreshing every 30s</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-xs text-gray-500">Auto-refreshing every 30s</span>
+          </div>
+          {user && (
+            <div className="flex items-center gap-3 border-l border-gray-200 pl-4">
+              <div className="text-right">
+                <p className="text-xs font-semibold text-gray-800">{user.email}</p>
+                <p className="text-xs text-blue-600">{user.role}</p>
+              </div>
+              <button
+                id="bank-logout-btn"
+                onClick={onLogout}
+                className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs text-gray-600 hover:text-gray-900 border border-gray-200 transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
