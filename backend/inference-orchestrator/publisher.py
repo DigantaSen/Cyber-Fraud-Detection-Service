@@ -43,6 +43,16 @@ class PredictionPublisher:
             self._producer.close()
             logger.info("Kafka producer closed")
 
+    async def ping(self) -> bool:
+        """Check if connected to Kafka"""
+        if not self._producer:
+            return False
+        try:
+            return self._producer.bootstrap_connected()
+        except Exception as e:
+            logger.error(f"Kafka ping failed: {e}")
+            return False
+
     def publish_completed(
         self,
         prediction_id: uuid.UUID,

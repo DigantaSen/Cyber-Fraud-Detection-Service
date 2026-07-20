@@ -339,11 +339,13 @@ async def get_latest_for_case(case_id: str, request: Request):
 async def health_ready(request: Request):
     db_ok = await db.ping()
     redis_ok = await redis_client.ping()
-    all_ok = db_ok and redis_ok
+    kafka_ok = await publisher.ping()
+    all_ok = db_ok and redis_ok and kafka_ok
     payload = {
         "status": "ready" if all_ok else "degraded",
         "db": "ok" if db_ok else "error",
         "redis": "ok" if redis_ok else "error",
+        "kafka": "ok" if kafka_ok else "error",
     }
     return JSONResponse(
         status_code=200 if all_ok else 503,

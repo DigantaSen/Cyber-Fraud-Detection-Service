@@ -261,7 +261,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 - **Effort:** 4h | **Owner:** Surjit
 
 ### T4c — Bank, Telecom, and Gov BFFs
-- **Purpose:** API Gateways for the Bank, Telecom, and Gov portals. | **Depends On:** T4, T8b, T6b. **Unlocks:** T5d, T5e, T5f.
+- **Purpose:** API Gateways for the Bank, Telecom, and Gov portals. | **Depends On:** T4, T8b, T6b, T8e. **Unlocks:** T5d, T5e, T5f.
 - **Docs:** [api/department-bffs.md](docs/api/department-bffs.md)
 - **Deliverable:** 3 lightweight FastAPI gateways serving `/api/v1/bank/`, `/api/v1/telecom/`, and `/api/v1/gov/`. Routes to Event Processing, Notification, and Reporting services.
 - **Effort:** 4h | **Owner:** Diganta
