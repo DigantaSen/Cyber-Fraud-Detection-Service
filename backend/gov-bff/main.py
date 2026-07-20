@@ -63,13 +63,10 @@ logger = logger.bind(service=settings.SERVICE_NAME, trace_id="—")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"{settings.SERVICE_NAME} starting up")
-    # TODO: Initialize DB pool, Kafka producer, Redis client here
-    # Example:
-    #   app.state.db = await asyncpg.create_pool(settings.DATABASE_URL, min_size=5, max_size=20)
-    #   app.state.redis = redis.from_url(settings.REDIS_URL)
     yield
     logger.info(f"{settings.SERVICE_NAME} shutting down")
-    # TODO: Close connections here
+    from clients.clients import close_clients
+    await close_clients()
 
 
 # ─── App ─────────────────────────────────────────────────────────────────────
@@ -159,25 +156,6 @@ async def readiness(request: Request):
     checks = {}
     healthy = True
 
-    # ── DB check ──────────────────────────────────────────────
-    try:
-        # Uncomment when DB pool is initialized in lifespan:
-        # async with request.app.state.db.acquire() as conn:
-        #     await conn.fetchval("SELECT 1")
-        checks["database"] = "ok"
-    except Exception as e:
-        checks["database"] = f"error: {e}"
-        healthy = False
-
-    # ── Redis check ───────────────────────────────────────────
-    try:
-        # Uncomment when Redis client is initialized:
-        # await request.app.state.redis.ping()
-        checks["redis"] = "ok"
-    except Exception as e:
-        checks["redis"] = f"error: {e}"
-        healthy = False
-
     status_code = 200 if healthy else 503
     return JSONResponse(
         status_code=status_code,
@@ -190,7 +168,5 @@ async def readiness(request: Request):
 
 
 # ─── Domain Routers ───────────────────────────────────────────────────────────
-# TODO: Import and include your domain routers here. Example:
-# from routers import cases, timeline
-# app.include_router(cases.router,    prefix="/api/v1", tags=["Cases"])
-# app.include_router(timeline.router, prefix="/api/v1", tags=["Timeline"])
+from routers import gov
+app.include_router(gov.router, prefix="/api/v1/gov")
