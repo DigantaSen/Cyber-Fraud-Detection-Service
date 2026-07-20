@@ -16,6 +16,12 @@ if (-not (Test-Path ".env")) {
     Write-Host "[1/4] .env already exists. Skipping." -ForegroundColor Green
 }
 
+# 1.5 Generate JWT Keys & Configure Kong
+Write-Host "Generating fresh RSA keys for JWT signing..." -ForegroundColor Yellow
+python generate_keys.py
+Write-Host "Injecting public key into Kong API Gateway config..." -ForegroundColor Yellow
+python add_kong_consumers.py
+
 # 2. Docker Compose Up
 Write-Host "[2/4] Starting infrastructure via Docker Compose (this may take a while to pull images)..." -ForegroundColor Yellow
 docker compose up -d
@@ -112,6 +118,14 @@ if ($osReady) {
     }
 } else {
     Write-Host "Warning: OpenSearch did not become ready in time." -ForegroundColor Red
+}
+
+# 5. Provision Demo Accounts
+Write-Host "[5/5] Provisioning Demo Accounts in Auth Service..." -ForegroundColor Yellow
+try {
+    python create_demo_accounts.py
+} catch {
+    Write-Host "Failed to provision demo accounts. You may need to run 'python create_demo_accounts.py' manually." -ForegroundColor Red
 }
 
 Write-Host "=============================================" -ForegroundColor Cyan
