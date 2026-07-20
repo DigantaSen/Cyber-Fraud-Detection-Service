@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
-const BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const BASE = '';
 
 // ── REST: Fetch paginated session list ────────────────────────────────────────
 
@@ -22,7 +22,7 @@ export const useSessions = (token: string | null) =>
     queryKey: ['telecom-sessions'],
     queryFn: async () => {
       if (!token) return [];
-      const res = await fetch(`${BASE}/api/v1/telecom/sessions`, {
+      const res = await fetch(`${BASE}/api/v1/telecom/sessions/active`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -52,7 +52,7 @@ export function useSessionAlerts(token: string | null) {
     if (!token) return;
 
     // EventSource doesn't support custom headers — use query param for token
-    const url = `${BASE}/api/v1/telecom/sessions/stream?token=${token}`;
+    const url = `${BASE}/api/v1/telecom/stream?jwt=${token}`;
     const es = new EventSource(url);
 
     es.onopen = () => setConnected(true);
