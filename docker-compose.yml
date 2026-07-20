@@ -706,6 +706,24 @@ services:
     healthcheck:
       disable: true
 
+  investigator-bff:
+    build:
+      context: ./backend/investigator-bff
+    container_name: platform-investigator-bff
+    restart: unless-stopped
+    ports:
+      - "8008:8000"
+    environment:
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   graph:
     build:
       context: ./backend/graph
@@ -851,6 +869,7 @@ services:
         condition: service_healthy
     healthcheck:
       disable: true
+
 
   # ──────────────────────────────────────────────────────────
   # Kong — API Gateway (DB-less Declarative Mode)
