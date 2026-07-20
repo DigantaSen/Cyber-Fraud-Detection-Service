@@ -260,7 +260,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 - **Deliverable:** FastAPI gateway service at `/api/v1/citizen/`. Proxies and aggregates: `POST /citizen/report` → Case Service (which triggers Orchestrator asynchronously). `POST /citizen/bot/message` → Bot Service. `GET /citizen/cases/:id` → Case Service + Prediction status. Injects `correlationId` and `X-User-Context` into every downstream call. Rate limit: 60 req/min per user (configured in Kong). **Stateless — scales independently from all downstream services.**
 - **Effort:** 4h | **Owner:** Surjit
 
-### T4c — Bank, Telecom, and Gov BFFs
+### T4c — Bank, Telecom, and Gov BFFs - COMPLETED
 - **Purpose:** API Gateways for the Bank, Telecom, and Gov portals. | **Depends On:** T4, T8b, T6b, T8e. **Unlocks:** T5d, T5e, T5f.
 - **Docs:** [api/department-bffs.md](docs/api/department-bffs.md)
 - **Deliverable:** 3 lightweight FastAPI gateways serving `/api/v1/bank/`, `/api/v1/telecom/`, and `/api/v1/gov/`. Routes to Event Processing, Notification, and Reporting services.
@@ -279,13 +279,13 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
   - > **IMPORTANT (CRITICAL TIER):** The UI must implement a 4th badge color (`red-700` or `dark red`) for cases matching `riskTier == 'CRITICAL'`.
 - **Effort:** 2 days | **Owner:** Surjit
 
-### T5d — Telecom Administrator UI
+### T5d — Telecom Administrator UI - COMPLETED
 - **Purpose:** Dashboard for telecom partners to see dropped calls. | **Depends On:** T4c, T5c (Monorepo setup).
 - **Docs:** [api/department-bffs.md](docs/api/department-bffs.md)
 - **Deliverable:** Single-page React app connecting to Telecom BFF via SSE. Shows a rolling log of active call sessions and interdiction alerts.
 - **Effort:** 1 day | **Owner:** Surjit
 
-### T5e — Bank Official UI
+### T5e — Bank Official UI - COMPLETED
 - **Purpose:** Dashboard for bank officials. | **Depends On:** T4c, T5c (Monorepo setup).
 - **Docs:** [api/department-bffs.md](docs/api/department-bffs.md)
 - **Deliverable:** Single-page React app connecting to Bank BFF. Shows blocked transactions with exact AI risk scores.
@@ -679,8 +679,8 @@ T11 ML Tuning (Kushal)                    xx xx xx xx
 T12 Explainability (Kushal)               xx xx
 T5c Citizen UI (Surjit)                    xx xx xx xx
 T4c Dept BFFs (Diganta)                                   XX
-T5d Telecom UI (Surjit)                                      xx
-T5e Bank UI (Surjit)                                         xx
+T5d Telecom UI (Surjit)                                      XX
+T5e Bank UI (Surjit)                                         XX
 T6c Dashboard UI (Nilkanta)                  xx xx xx xx xx
 T5f Gov UI (Nilkanta)                                        xx
 T13 ML Integration (Diganta+Surjit)                    XX

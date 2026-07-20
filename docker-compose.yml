@@ -542,7 +542,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
       LOG_LEVEL: "INFO"
     ports:
-      - "8006:8000"
+      - "8012:8000"
     networks:
       - platform-net
     depends_on:
@@ -648,13 +648,95 @@ services:
       retries: 5
       start_period: 30s
 
+  auth:
+    build:
+      context: ./backend/auth
+    container_name: platform-auth
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  case:
+    build:
+      context: ./backend/case
+    container_name: platform-case
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  bot:
+    build:
+      context: ./backend/bot
+    container_name: platform-bot
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  citizen-bff:
+    build:
+      context: ./backend/citizen-bff
+    container_name: platform-citizen-bff
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+      CASE_SERVICE_URL: "http://case:8000"
+      BOT_SERVICE_URL: "http://bot:8000"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  department-bffs:
+    build:
+      context: ./backend/department-bffs
+    container_name: platform-department-bffs
+    restart: unless-stopped
+    environment:
+      NOTIFY_URL: "http://notification:8000/api/v1/notify"
+      REPORTING_URL: "http://reporting:8000/api/v1/reports"
+    networks:
+      - platform-net
+
   reporting-service:
     build:
       context: ./backend/reporting
     container_name: platform-reporting
     restart: unless-stopped
     ports:
-      - "8007:8000"
+      - "8013:8000"
     environment:
       DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
