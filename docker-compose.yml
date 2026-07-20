@@ -764,6 +764,53 @@ services:
     healthcheck:
       disable: true
 
+  notification:
+    build:
+      context: ./backend/notification
+    container_name: platform-notification
+    restart: unless-stopped
+    ports:
+      - "8011:8000"
+    environment:
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      MHA_WEBHOOK_URL: "http://kong:8000/webhook-mock"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  notification-consumer:
+    build:
+      context: ./backend/notification
+    container_name: platform-notification-consumer
+    restart: unless-stopped
+    command: ["python", "consumer.py"]
+    environment:
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      MHA_WEBHOOK_URL: "http://kong:8000/webhook-mock"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
   # ──────────────────────────────────────────────────────────
   # Kong — API Gateway (DB-less Declarative Mode)
   # JWT validation, rate limiting, correlation-id on every route

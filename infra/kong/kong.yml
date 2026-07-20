@@ -190,5 +190,20 @@ services:
             - exp
           key_claim_name: kid
 
+  # Notification Service (T8e) - internal only, JWT required
+  - name: notification-service
+    url: http://notification:8000
+    routes:
+      - name: notification-routes
+        paths:
+          - /api/v1/notify
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
 # ── Consumers (JWT issuers — populated after auth service is live) ──
 consumers: []
