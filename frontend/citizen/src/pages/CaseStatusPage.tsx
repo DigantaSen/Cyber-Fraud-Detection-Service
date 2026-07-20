@@ -3,6 +3,7 @@ import { useCaseStatus } from '../api/cases';
 import VerdictDisplay from '../components/VerdictDisplay';
 import BotWidget from '../components/BotWidget';
 import EvidenceUpload from '../components/EvidenceUpload';
+import { EvidenceList } from '../components/EvidenceList';
 
 const STATUS_STEPS = ['New', 'Assigned', 'Investigating', 'Pending_AI', 'Action_Taken', 'Closed'];
 
@@ -91,6 +92,9 @@ export default function CaseStatusPage() {
 
         {/* Evidence Upload */}
         <EvidenceUpload caseId={caseId!} complaintType={caseData?.complaintType || caseData?.complaint_type} />
+
+        {/* Evidence List */}
+        <EvidenceList caseId={caseId!} />
 
         {/* Next Steps */}
         <div className="bg-white rounded-2xl shadow-lg p-6">

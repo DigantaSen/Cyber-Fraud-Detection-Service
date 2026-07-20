@@ -136,8 +136,9 @@ export default function EvidenceUpload({ caseId, complaintType }: EvidenceUpload
         clientSha256,
       });
 
-      // ── Step 5: Done — invalidate the Case query
+      // ── Step 5: Done — invalidate the Case and Evidence queries
       queryClient.invalidateQueries({ queryKey: ['case', caseId] });
+      queryClient.invalidateQueries({ queryKey: ['evidence', caseId] });
       setUploadState({
         status: 'completed',
         evidenceId: confirmation.evidenceId,

@@ -111,6 +111,41 @@ async def get_case(
 
 # ── List Cases ────────────────────────────────────────────────────────────────
 
+@router.get("/my")
+async def list_my_cases(
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Get all cases reported by the current citizen user."""
+    from sqlalchemy import select
+    from models.case import Case
+    
+    result = await db.execute(
+        select(Case).where(Case.reporter_user_id == current_user.user_id).order_by(Case.created_at.desc())
+    )
+    items = result.scalars().all()
+    
+    return success_response({
+        "items": [
+            CaseSummaryResponse(
+                case_id=i.case_id,
+                case_number=i.case_number,
+                title=i.title,
+                complaint_type=i.complaint_type,
+                status=i.status,
+                priority=i.priority,
+                jurisdiction_id=i.jurisdiction_id,
+                assigned_to=i.assigned_investigator,
+                risk_tier=None,
+                created_at=i.created_at,
+                updated_at=i.updated_at,
+            ).model_dump(mode="json", by_alias=True)
+            for i in items
+        ]
+    }, _corr(request))
+
+
 @router.get("")
 async def list_cases(
     request: Request,

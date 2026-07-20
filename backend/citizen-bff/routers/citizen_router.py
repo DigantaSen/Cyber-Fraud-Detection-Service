@@ -87,6 +87,19 @@ async def submit_report(
     return result
 
 
+# ── GET /citizen/cases ────────────────────────────────────────────────────────
+
+@router.get("/cases")
+async def get_my_cases(
+    request: Request,
+    current_user=Depends(get_current_user),
+    case_client: httpx.AsyncClient = Depends(get_case_client),
+):
+    """Get all cases reported by the current citizen. Proxies to Case Service GET /api/v1/cases/my."""
+    result = await _proxy(case_client, "GET", "/api/v1/cases/my", headers=_forward_headers(request, current_user))
+    return result
+
+
 # ── GET /citizen/cases/:caseId ────────────────────────────────────────────────
 
 @router.get("/cases/{case_id}")
@@ -126,6 +139,23 @@ async def get_bot_session(
 ):
     """Get bot session. Proxies to Bot Service GET /api/v1/bot/session/:id."""
     result = await _proxy(bot_client, "GET", f"/api/v1/bot/session/{session_id}", headers=_forward_headers(request, current_user))
+    return result
+
+
+# ── GET /citizen/cases/:caseId/evidence ───────────────────────────────────────
+
+@router.get("/cases/{case_id}/evidence")
+async def get_case_evidence(
+    request: Request,
+    case_id: uuid.UUID,
+    current_user=Depends(get_current_user),
+    evidence_client: httpx.AsyncClient = Depends(get_evidence_client),
+):
+    """Get evidence list for a case. Proxies to Evidence Service."""
+    result = await _proxy(
+        evidence_client, "GET", f"/cases/{case_id}/evidence",
+        headers=_forward_headers(request, current_user),
+    )
     return result
 
 

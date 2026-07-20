@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import CaseStatusPage from './pages/CaseStatusPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import MyCasesPage from './pages/MyCasesPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 const queryClient = new QueryClient({
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+          <Route path="/my-cases" element={<ProtectedRoute><MyCasesPage /></ProtectedRoute>} />
           <Route path="/cases/:caseId" element={<ProtectedRoute><CaseStatusPage /></ProtectedRoute>} />
         </Routes>
       </BrowserRouter>
