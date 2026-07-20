@@ -160,5 +160,20 @@ services:
             - exp
           key_claim_name: kid
 
+  # Graph Service (T8c) - internal only, JWT required
+  - name: graph-service
+    url: http://graph:8000
+    routes:
+      - name: graph-routes
+        paths:
+          - /api/v1/graph
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
 # ── Consumers (JWT issuers — populated after auth service is live) ──
 consumers: []

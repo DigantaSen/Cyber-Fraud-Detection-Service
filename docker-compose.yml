@@ -665,6 +665,56 @@ services:
     healthcheck:
       disable: true
 
+  graph:
+    build:
+      context: ./backend/graph
+    container_name: platform-graph
+    restart: unless-stopped
+    ports:
+      - "8009:8000"
+    environment:
+      NEO4J_URI: "bolt://neo4j:7687"
+      NEO4J_USER: "neo4j"
+      NEO4J_PASSWORD: "change_me_neo4j"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  graph-consumer:
+    build:
+      context: ./backend/graph
+    container_name: platform-graph-consumer
+    restart: unless-stopped
+    command: ["python", "consumer.py"]
+    environment:
+      NEO4J_URI: "bolt://neo4j:7687"
+      NEO4J_USER: "neo4j"
+      NEO4J_PASSWORD: "change_me_neo4j"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "graph-service-consumer"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
   # ──────────────────────────────────────────────────────────
   # Kong — API Gateway (DB-less Declarative Mode)
   # JWT validation, rate limiting, correlation-id on every route
