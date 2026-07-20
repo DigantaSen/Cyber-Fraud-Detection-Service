@@ -805,6 +805,23 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+  gov-bff:
+    build:
+      context: ./backend/gov-bff
+    container_name: platform-gov-bff
+    restart: unless-stopped
+    ports:
+      - "8016:8000"
+    environment:
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   graph:
     build:

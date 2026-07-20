@@ -205,6 +205,21 @@ services:
             - exp
           key_claim_name: kid
 
+  # Gov BFF (T4c/T5f) - GOV_OFFICIAL JWT required
+  - name: gov-bff
+    url: http://gov-bff:8000
+    routes:
+      - name: gov-routes
+        paths:
+          - /api/v1/gov
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
 # ── Consumers (JWT issuers — populated after auth service is live) ──
 consumers:
   - username: platform-auth
