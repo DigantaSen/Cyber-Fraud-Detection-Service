@@ -870,8 +870,7 @@ services:
     healthcheck:
       disable: true
 
-=======
->>>>>>> feature/Nilkanta-investigator-bff
+
   # ──────────────────────────────────────────────────────────
   # Kong — API Gateway (DB-less Declarative Mode)
   # JWT validation, rate limiting, correlation-id on every route
