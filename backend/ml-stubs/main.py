@@ -14,14 +14,12 @@ from pydantic import BaseModel, Field, field_validator
 
 SERVICE_NAME = os.getenv("SERVICE_NAME", "ml-stub")
 MODEL_VERSION = os.getenv("MODEL_VERSION", "stub-v0.1")
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3:latest")
-OLLAMA_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "45"))
-SCAM_NLP_PROVIDER = os.getenv("SCAM_NLP_PROVIDER", "ollama").lower()
+SCAM_NLP_PROVIDER = os.getenv("SCAM_NLP_PROVIDER", "groq").lower()
 SCAM_NLP_RULES_VERSION = os.getenv("SCAM_NLP_RULES_VERSION", "rules-v0.1")
 COUNTERFEIT_CV_PROVIDER = os.getenv("COUNTERFEIT_CV_PROVIDER", "groq").lower()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_SCAM_NLP_MODEL = os.getenv("GROQ_SCAM_NLP_MODEL", "llama-3.3-70b-versatile")
 GROQ_VISION_MODEL = os.getenv(
     "GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
 )
@@ -59,13 +57,13 @@ SCAM_RULES = [
     },
     {
         "name": "authority impersonation pattern",
-        "pattern": r"\b(police|cbi|rbi|bank officer|customs|income tax|fir|arrest|court)\b|पुलिस|सीबीआई|आरबीआई|गिरफ्तार|एफआईआर",
+        "pattern": r"\b(police|cbi|rbi|bank officer|customs|income tax|fir|arrest|court|cyber crime|cyber cell|criminal case)\b|पुलिस|सीबीआई|आरबीआई|गिरफ्तार|एफआईआर",
         "weight": 22,
     },
     {
         "name": "financial transfer pressure",
-        "pattern": r"\b(transfer|send money|pay|payment|upi|gpay|phonepe|paytm)\b|पैसे|भुगतान|ट्रांसफर|यूपीआई",
-        "weight": 18,
+        "pattern": r"\b(transfer|send money|pay|payment|upi|gpay|google pay|phonepe|paytm|needs? money|financial help|emergency (money|help|assistance))\b|पैसे|भुगतान|ट्रांसफर|यूपीआई",
+        "weight": 20,
     },
     {
         "name": "credential or OTP request",
@@ -79,36 +77,48 @@ SCAM_RULES = [
     },
     {
         "name": "reward or lottery lure",
-        "pattern": r"\b(lottery|winner|prize|reward|cashback|gift|free|लॉटरी|इनाम|पुरस्कार|गिफ्ट)\b",
-        "weight": 14,
+        "pattern": r"\b(lottery|winner|prize|reward|cashback|gift|free|claim.*prize|processing fee|लॉटरी|इनाम|पुरस्कार|गिफ्ट)\b",
+        "weight": 20,
     },
     {
         "name": "investment return lure",
         "pattern": r"\b(invest|investment|double money|guaranteed return|crypto|trading|profit|निवेश|मुनाफा)\b",
-        "weight": 18,
+        "weight": 22,
     },
     {
         "name": "relationship trust lure",
         "pattern": r"\b(love|romance|friendship|marriage|dating|emergency help|प्यार|दोस्ती|शादी)\b",
-        "weight": 12,
+        "weight": 20,
+    },
+    {
+        "name": "UPI collect-request or QR social engineering",
+        "pattern": r"\b(collect request|qr code|scan.{0,15}qr|approve.{0,20}request)\b|कलेक्ट रिक्वेस्ट",
+        "weight": 20,
+    },
+    {
+        "name": "gift card or wire transfer request",
+        "pattern": r"\b(gift card|western union|wire transfer|itunes card|google play card)\b",
+        "weight": 20,
     },
 ]
 
 CATEGORY_RULES = [
-    ("UPI_SCAM", r"\b(upi|gpay|phonepe|paytm|qr|collect request|यूपीआई)\b"),
+    ("UPI_SCAM", r"\b(upi|gpay|google pay|phonepe|paytm|qr|collect request)\b|यूपीआई|कलेक्ट रिक्वेस्ट"),
     (
         "IMPERSONATION_FRAUD",
-        r"\b(police|cbi|rbi|bank officer|customs|income tax|fir|arrest|पुलिस|सीबीआई|आरबीआई|गिरफ्तार)\b",
+        r"\b(police|cbi|rbi|bank officer|customs|income tax|fir|arrest|cyber crime|cyber cell|criminal case|पुलिस|सीबीआई|आरबीआई|गिरफ्तार)\b",
     ),
     (
         "INVESTMENT_FRAUD",
         r"\b(invest|investment|double money|guaranteed return|crypto|trading|profit|निवेश|मुनाफा)\b",
     ),
+    # Romance is checked before lottery/reward so a shared "gift" mention (e.g. gift
+    # cards requested by a romance-scam actor) doesn't get miscategorized as a lottery win.
+    ("ROMANCE_SCAM", r"\b(love|romance|friendship|marriage|dating|प्यार|दोस्ती|शादी)\b"),
     (
         "LOTTERY_SCAM",
-        r"\b(lottery|winner|prize|reward|cashback|gift|लॉटरी|इनाम|पुरस्कार)\b",
+        r"\b(lottery|winner|prize|reward|cashback|claim.*prize|processing fee|लॉटरी|इनाम|पुरस्कार)\b",
     ),
-    ("ROMANCE_SCAM", r"\b(love|romance|friendship|marriage|dating|प्यार|दोस्ती|शादी)\b"),
 ]
 
 
@@ -325,7 +335,7 @@ def risk_tier(score: int) -> str:
 def classify_scam_text(request: ScamClassifyRequest) -> dict[str, Any]:
     text = request.text.lower()
     signals = []
-    score = 10
+    score = 12
 
     for rule in SCAM_RULES:
         if re.search(rule["pattern"], text, flags=re.IGNORECASE):
@@ -337,7 +347,7 @@ def classify_scam_text(request: ScamClassifyRequest) -> dict[str, Any]:
     elif request.complaintType == ComplaintType.CALL_FRAUD:
         score += 6
     elif request.complaintType == ComplaintType.CYBER_CRIME:
-        score += 5
+        score += 8
 
     if re.search(r"(₹|rs\.?|inr)\s?\d+|\d+\s?(rupees|रुपये)", text, flags=re.IGNORECASE):
         signals.append("explicit money amount mentioned")
@@ -369,54 +379,61 @@ def classify_scam_text(request: ScamClassifyRequest) -> dict[str, Any]:
 
 
 def classify_scam_text_safely(request: ScamClassifyRequest) -> dict[str, Any]:
-    if SCAM_NLP_PROVIDER == "ollama":
+    if SCAM_NLP_PROVIDER == "groq":
         try:
-            return classify_scam_text_with_ollama(request)
+            return classify_scam_text_with_groq(request)
         except Exception as exc:
             response = classify_scam_text(request)
             response["modelVersion"] = "rules-fallback-v0.1"
             response["signals"] = [
                 *response["signals"][:4],
-                f"ollama unavailable: {type(exc).__name__}",
+                f"groq unavailable: {type(exc).__name__}",
             ]
             response["explanation"] = (
-                f"{response['explanation']} Ollama unavailable; used local fallback."
+                f"{response['explanation']} Groq unavailable; used local fallback."
             )
             return response
 
     return classify_scam_text(request)
 
 
-def classify_scam_text_with_ollama(request: ScamClassifyRequest) -> dict[str, Any]:
-    prompt = build_ollama_scam_prompt(request)
+def classify_scam_text_with_groq(request: ScamClassifyRequest) -> dict[str, Any]:
+    if not GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY is not configured")
+
+    prompt = build_groq_scam_prompt(request)
     payload = {
-        "model": OLLAMA_MODEL,
-        "prompt": prompt,
+        "model": GROQ_SCAM_NLP_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0,
+        "max_completion_tokens": 350,
+        "response_format": {"type": "json_object"},
         "stream": False,
-        "format": "json",
-        "options": {
-            "temperature": 0,
-            "num_predict": 350,
-        },
+    }
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
     }
 
-    with httpx.Client(timeout=OLLAMA_TIMEOUT_SECONDS) as client:
-        response = client.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload)
+    with httpx.Client(timeout=GROQ_TIMEOUT_SECONDS) as client:
+        response = client.post(
+            f"{GROQ_BASE_URL}/chat/completions", headers=headers, json=payload
+        )
         response.raise_for_status()
 
-    raw_text = response.json()["response"]
-    parsed = json.loads(raw_text)
+    raw_content = response.json()["choices"][0]["message"]["content"]
+    parsed = json.loads(raw_content)
     parsed["score"] = int(parsed["score"])
     parsed["riskTier"] = risk_tier(parsed["score"])
     parsed["confidence"] = float(parsed["confidence"])
     parsed["signals"] = [str(signal) for signal in parsed.get("signals", [])][:5]
-    parsed["modelVersion"] = f"ollama:{OLLAMA_MODEL}"
+    parsed["modelVersion"] = f"groq:{GROQ_SCAM_NLP_MODEL}"
 
     contract_response = ScamClassifyResponse.model_validate(parsed)
     return contract_response.model_dump()
 
 
-def build_ollama_scam_prompt(request: ScamClassifyRequest) -> str:
+def build_groq_scam_prompt(request: ScamClassifyRequest) -> str:
     return f"""
 You are a cyber fraud text classifier for Indian digital safety reports.
 Classify the complaint and return ONLY valid JSON. No markdown. No prose outside JSON.
@@ -438,7 +455,7 @@ Return this exact JSON schema:
   "confidence": 0.0,
   "signals": ["short evidence signal"],
   "explanation": "one short explanation",
-  "modelVersion": "ollama-placeholder"
+  "modelVersion": "groq-placeholder"
 }}
 
 Complaint metadata:
