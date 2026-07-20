@@ -58,7 +58,7 @@ Case.Created (Kafka) → Orchestrator
     }
   ],
   "explanation": "Multi-model consensus: NLP detected urgency patterns; graph links to known fraud ring.",
-  "fusionWeights": {"scam-nlp": 0.4, "graph-analyzer": 0.35, "audio-analyzer": 0.15, "counterfeit-cv": 0.1},
+  "fusionWeights": {"scam-nlp": 0.4, "graph-analyzer": 0.25, "audio-analyzer": 0.15, "counterfeit-cv": 0.2},
   "fusionTimestamp": "2026-07-11T12:00:45Z",
   "pendingReview": false
 }

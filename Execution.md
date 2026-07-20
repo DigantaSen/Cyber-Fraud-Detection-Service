@@ -102,7 +102,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 | **T6c** | Wave 6 (UIs) | Nilkanta | Investigator Dashboard UI |
 | **T6d** | Wave 5 (BFFs) | Nilkanta | Investigator BFF (Gateway for Dashboard) |
 | **T7** | Wave 3 (Async) | Diganta | Audit Service (Immutable Ledger) |
-| **T8** | Wave 4 (Orchestrate)| Diganta | Inference Orchestrator (Multi-source Fusion) |
+| **✅ T8** | Wave 4 (Orchestrate)| Diganta | Inference Orchestrator (Multi-source Fusion) - COMPLETED |
 | **T8b** | Wave 2 (Core) | Diganta | Event Processing Service + Kafka Backbone |
 | **T8c** | Wave 3 (Async) | Nilkanta | Entity Graph Service (Neo4j linkage) |
 | **T8d** | Wave 3 (Async) | Nilkanta | Geospatial Intelligence Service (PostGIS) |
@@ -121,7 +121,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
   - `postgres:16-alpine` — primary relational store. Services connect directly on port **5432**.
   - `postgis/postgis:16-3.4` — dedicated geospatial store (separate container, separate DB)
   - `neo4j:5-community` with `NEO4JPLUGINS=apoc` — entity graph store
-  - `redis:7-alpine` — session cache, OTP, JWT denylist, fusion weight config.
+  - `redis:7-alpine` — session cache, OTP, JWT denylist, fusion weight config. (Password: `change_me_redis`)
   - `opensearch:2` + `opensearch-dashboards:2` — CQRS search read model, faceted case search.
   - `bitnamilegacy/kafka:3.6` — Kafka 3.6 in KRaft mode (no Zookeeper). **All topics provisioned with 12 partitions.**
   - `minio/minio` — S3-compatible object store with `mc` init container to create buckets
@@ -222,6 +222,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 - **Purpose:** Omnichannel alerting with dedicated MHA webhook (<5s SLO). | **Depends On:** T3c, T8b. **Unlocks:** T13c, T15, T16.
 - **Docs:** [api/notification.md](docs/api/notification.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md), [05-geospatial-dashboard-push.md](docs/architecture/sequences/05-geospatial-dashboard-push.md)
 - **Deliverable:** POST /notify/send (SMS/Email/Push — stubbed initially), POST /notify/mha-alert (high-priority queue, <5s SLO), GET /notify/preferences/:userId. SSE for real-time push. Publishes MHAAlert.Sent. **MHA channel uses a dedicated Kafka consumer group with highest priority — separate from standard citizen notification consumer to prevent head-of-line blocking.**
+  - > **IMPORTANT (CRITICAL TIER):** MHA trigger logic must check for `riskTier in ('HIGH', 'CRITICAL')`. The inference engine can return `CRITICAL` for scores >= 90.
 - **Effort:** 1.5 days | **Owner:** Nilkanta
 
 ### ✅ T8f — Search Service (OpenSearch Kafka Consumer) - COMPLETED
@@ -245,10 +246,11 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
   - **Smoke test:** `backend/audit/smoke_test.ps1` — 15 assertions, all passing.
 - **Effort:** 1 day | **Owner:** Diganta
 
-### T8 — Inference Orchestrator Service
+### ✅ T8 — Inference Orchestrator Service (COMPLETED)
 - **Purpose:** Parallel multi-source AI dispatch, fusion, HITL routing. Most architecturally complex service.
 - **Depends On:** T3c, T8b, T8c. **Unlocks:** T13, T5b, T13b.
 - **Docs:** [api/inference-orchestrator.md](docs/api/inference-orchestrator.md), [api/ml-contract.md](docs/api/ml-contract.md), [01-citizen-report-hitl.md](docs/architecture/sequences/01-citizen-report-hitl.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md), [db/redis.md](docs/db/redis.md)
+- **Status:** COMPLETED. Service handles parallel dispatch, sync/async SLAs, atomic postgres transactions, and robust Kafka consumer. (Note: Uses Redis password `change_me_redis`).
 - **Deliverable:** POST /inference/analyze — parallel fan-out to all enabled ML APIs (configurable via feature flags), applies fusion weights, returns {fusedScore, riskTier, confidence, modelBreakdown[], explanation, status: COMPLETE|INCOMPLETE|PENDING_REVIEW}. Per-model timeout 2s. Low-confidence -> suppresses automated actions. Partial failure -> INCOMPLETE verdict. Persists explainability metadata. Publishes Prediction.Requested, Prediction.Completed, Prediction.Failed.
 - **Effort:** 2 days | **Owner:** Diganta — [CRITICAL PATH]
 
@@ -273,7 +275,8 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 ### T5c — Citizen UI + Bot Interface
 - **Purpose:** Citizen-facing frontend. | **Depends On:** T4b. **Unlocks:** T16.
 - **Docs:** [api/citizen-bff.md](docs/api/citizen-bff.md), [api/bot.md](docs/api/bot.md)
-- **Deliverable:** Report submission form (POST /citizen/report), risk verdict display with confidence + explanation + HITL status, bot chat widget (POST /citizen/bot/message). Built in a Vite Monorepo workspace.
+- **Deliverable:** Report submission form (POST /citizen/report), risk verdict display with confidence + explanation + HITL status, bot chat widget (POST /citizen/bot/message). Built in a Vite Monorepo workspace. React/Vite PWA. Auth via T4. Home dashboard showing past reports. Multilingual incident reporting wizard. WebSockets integration with Bot service for chat-based reporting.
+  - > **IMPORTANT (CRITICAL TIER):** The UI must implement a 4th badge color (`red-700` or `dark red`) for cases matching `riskTier == 'CRITICAL'`.
 - **Effort:** 2 days | **Owner:** Surjit
 
 ### T5d — Telecom Administrator UI
