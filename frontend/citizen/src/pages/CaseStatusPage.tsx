@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useCaseStatus } from '../api/cases';
 import VerdictDisplay from '../components/VerdictDisplay';
 import BotWidget from '../components/BotWidget';
+import EvidenceUpload from '../components/EvidenceUpload';
 
 const STATUS_STEPS = ['New', 'Assigned', 'Investigating', 'Pending_AI', 'Action_Taken', 'Closed'];
 
@@ -87,6 +88,9 @@ export default function CaseStatusPage() {
           <h2 className="text-lg font-semibold text-gray-700 mb-4">AI Risk Assessment</h2>
           <VerdictDisplay prediction={caseData.prediction} />
         </div>
+
+        {/* Evidence Upload */}
+        <EvidenceUpload caseId={caseId!} complaintType={caseData?.complaintType || caseData?.complaint_type} />
 
         {/* Next Steps */}
         <div className="bg-white rounded-2xl shadow-lg p-6">
