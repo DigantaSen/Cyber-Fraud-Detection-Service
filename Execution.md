@@ -102,13 +102,13 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 | **T6c** | Wave 6 (UIs) | Nilkanta | Investigator Dashboard UI |
 | **T6d** | Wave 5 (BFFs) | Nilkanta | Investigator BFF (Gateway for Dashboard) |
 | **T7** | Wave 3 (Async) | Diganta | Audit Service (Immutable Ledger) |
-| **T8** | Wave 4 (Orchestrate)| Diganta | Inference Orchestrator (Multi-source Fusion) |
+| **✅ T8** | Wave 4 (Orchestrate)| Diganta | Inference Orchestrator (Multi-source Fusion) - COMPLETED |
 | **T8b** | Wave 2 (Core) | Diganta | Event Processing Service + Kafka Backbone |
 | **T8c** | Wave 3 (Async) | Nilkanta | Entity Graph Service (Neo4j linkage) |
 | **T8d** | Wave 3 (Async) | Nilkanta | Geospatial Intelligence Service (PostGIS) |
 | **T8e** | Wave 3 (Async) | Nilkanta | Notification Service (MHA Alerts) |
 | **T8f** | Wave 3 (Async) | Diganta | Search Service (OpenSearch CQRS) |
-| **T9-T12b**| Wave 7 (ML) | Kushal | ML Prep, Models, Explainability, Edge |
+| **✅ T9-T12b**| Wave 7 (ML) | Kushal | ML Prep, Models, Explainability, Edge - COMPLETED |
 | **T13-T16**| Wave 8 (Integrate)| Diganta | Fusion, HITL, Interdiction, E2E Testing |
 | **T17-T21**| Wave 9 (Wrap-up)| All | System Tests, Bug Fixes, Deployment, Pitch |
 
@@ -121,7 +121,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
   - `postgres:16-alpine` — primary relational store. Services connect directly on port **5432**.
   - `postgis/postgis:16-3.4` — dedicated geospatial store (separate container, separate DB)
   - `neo4j:5-community` with `NEO4JPLUGINS=apoc` — entity graph store
-  - `redis:7-alpine` — session cache, OTP, JWT denylist, fusion weight config.
+  - `redis:7-alpine` — session cache, OTP, JWT denylist, fusion weight config. (Password: `change_me_redis`)
   - `opensearch:2` + `opensearch-dashboards:2` — CQRS search read model, faceted case search.
   - `bitnamilegacy/kafka:3.6` — Kafka 3.6 in KRaft mode (no Zookeeper). **All topics provisioned with 12 partitions.**
   - `minio/minio` — S3-compatible object store with `mc` init container to create buckets
@@ -222,6 +222,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 - **Purpose:** Omnichannel alerting with dedicated MHA webhook (<5s SLO). | **Depends On:** T3c, T8b. **Unlocks:** T13c, T15, T16.
 - **Docs:** [api/notification.md](docs/api/notification.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md), [05-geospatial-dashboard-push.md](docs/architecture/sequences/05-geospatial-dashboard-push.md)
 - **Deliverable:** POST /notify/send (SMS/Email/Push — stubbed initially), POST /notify/mha-alert (high-priority queue, <5s SLO), GET /notify/preferences/:userId. SSE for real-time push. Publishes MHAAlert.Sent. **MHA channel uses a dedicated Kafka consumer group with highest priority — separate from standard citizen notification consumer to prevent head-of-line blocking.**
+  - > **IMPORTANT (CRITICAL TIER):** MHA trigger logic must check for `riskTier in ('HIGH', 'CRITICAL')`. The inference engine can return `CRITICAL` for scores >= 90.
 - **Effort:** 1.5 days | **Owner:** Nilkanta
 
 ### ✅ T8f — Search Service (OpenSearch Kafka Consumer) - COMPLETED
@@ -245,10 +246,11 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
   - **Smoke test:** `backend/audit/smoke_test.ps1` — 15 assertions, all passing.
 - **Effort:** 1 day | **Owner:** Diganta
 
-### T8 — Inference Orchestrator Service
+### ✅ T8 — Inference Orchestrator Service (COMPLETED)
 - **Purpose:** Parallel multi-source AI dispatch, fusion, HITL routing. Most architecturally complex service.
 - **Depends On:** T3c, T8b, T8c. **Unlocks:** T13, T5b, T13b.
 - **Docs:** [api/inference-orchestrator.md](docs/api/inference-orchestrator.md), [api/ml-contract.md](docs/api/ml-contract.md), [01-citizen-report-hitl.md](docs/architecture/sequences/01-citizen-report-hitl.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md), [db/redis.md](docs/db/redis.md)
+- **Status:** COMPLETED. Service handles parallel dispatch, sync/async SLAs, atomic postgres transactions, and robust Kafka consumer. (Note: Uses Redis password `change_me_redis`).
 - **Deliverable:** POST /inference/analyze — parallel fan-out to all enabled ML APIs (configurable via feature flags), applies fusion weights, returns {fusedScore, riskTier, confidence, modelBreakdown[], explanation, status: COMPLETE|INCOMPLETE|PENDING_REVIEW}. Per-model timeout 2s. Low-confidence -> suppresses automated actions. Partial failure -> INCOMPLETE verdict. Persists explainability metadata. Publishes Prediction.Requested, Prediction.Completed, Prediction.Failed.
 - **Effort:** 2 days | **Owner:** Diganta — [CRITICAL PATH]
 
@@ -258,8 +260,8 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 - **Deliverable:** FastAPI gateway service at `/api/v1/citizen/`. Proxies and aggregates: `POST /citizen/report` → Case Service (which triggers Orchestrator asynchronously). `POST /citizen/bot/message` → Bot Service. `GET /citizen/cases/:id` → Case Service + Prediction status. Injects `correlationId` and `X-User-Context` into every downstream call. Rate limit: 60 req/min per user (configured in Kong). **Stateless — scales independently from all downstream services.**
 - **Effort:** 4h | **Owner:** Surjit
 
-### T4c — Bank, Telecom, and Gov BFFs
-- **Purpose:** API Gateways for the Bank, Telecom, and Gov portals. | **Depends On:** T4, T8b, T6b. **Unlocks:** T5d, T5e, T5f.
+### T4c — Bank, Telecom, and Gov BFFs - COMPLETED
+- **Purpose:** API Gateways for the Bank, Telecom, and Gov portals. | **Depends On:** T4, T8b, T6b, T8e. **Unlocks:** T5d, T5e, T5f.
 - **Docs:** [api/department-bffs.md](docs/api/department-bffs.md)
 - **Deliverable:** 3 lightweight FastAPI gateways serving `/api/v1/bank/`, `/api/v1/telecom/`, and `/api/v1/gov/`. Routes to Event Processing, Notification, and Reporting services.
 - **Effort:** 4h | **Owner:** Diganta
@@ -273,16 +275,17 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 ### T5c — Citizen UI + Bot Interface
 - **Purpose:** Citizen-facing frontend. | **Depends On:** T4b. **Unlocks:** T16.
 - **Docs:** [api/citizen-bff.md](docs/api/citizen-bff.md), [api/bot.md](docs/api/bot.md)
-- **Deliverable:** Report submission form (POST /citizen/report), risk verdict display with confidence + explanation + HITL status, bot chat widget (POST /citizen/bot/message). Built in a Vite Monorepo workspace.
+- **Deliverable:** Report submission form (POST /citizen/report), risk verdict display with confidence + explanation + HITL status, bot chat widget (POST /citizen/bot/message). Built in a Vite Monorepo workspace. React/Vite PWA. Auth via T4. Home dashboard showing past reports. Multilingual incident reporting wizard. WebSockets integration with Bot service for chat-based reporting.
+  - > **IMPORTANT (CRITICAL TIER):** The UI must implement a 4th badge color (`red-700` or `dark red`) for cases matching `riskTier == 'CRITICAL'`.
 - **Effort:** 2 days | **Owner:** Surjit
 
-### T5d — Telecom Administrator UI
+### T5d — Telecom Administrator UI - COMPLETED
 - **Purpose:** Dashboard for telecom partners to see dropped calls. | **Depends On:** T4c, T5c (Monorepo setup).
 - **Docs:** [api/department-bffs.md](docs/api/department-bffs.md)
 - **Deliverable:** Single-page React app connecting to Telecom BFF via SSE. Shows a rolling log of active call sessions and interdiction alerts.
 - **Effort:** 1 day | **Owner:** Surjit
 
-### T5e — Bank Official UI
+### T5e — Bank Official UI - COMPLETED
 - **Purpose:** Dashboard for bank officials. | **Depends On:** T4c, T5c (Monorepo setup).
 - **Docs:** [api/department-bffs.md](docs/api/department-bffs.md)
 - **Deliverable:** Single-page React app connecting to Bank BFF. Shows blocked transactions with exact AI risk scores.
@@ -302,53 +305,53 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 
 ---
 
-### T9 — ML: Data Preparation (All 4 Model Types)
+### ✅ T9 — ML: Data Preparation (All 4 Model Types) - COMPLETED
 - **Purpose:** Ground truth datasets and prompt/feature designs before writing stub code.
 - **Depends On:** T2 (needs ml-contract.md). Starts Day 1 independently of sign-off.
-- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md)
-- **Deliverable:** (1) Scam NLP: 50+ labeled complaint texts across 5 categories + prompt template + few-shot examples. (2) Counterfeit CV: currency security feature descriptions + image samples. (3) Graph Fraud: 3 synthetic fraud ring adjacency graphs with labeled fraud nodes. (4) Audio spoof: acoustic feature descriptions + sample clips.
+- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md), [ml/evaluation-report.md](docs/ml/evaluation-report.md)
+- **Deliverable:** (1) Scam NLP: 50+ labeled complaint texts across 5 categories + prompt template + few-shot examples — `backend/ml-stubs/eval/dataset_scam_nlp.py` (51 examples, EN+HI). (2) Counterfeit CV: currency security feature descriptions + image samples — `ml/edge/features.py`. (3) Graph Fraud: 3 synthetic fraud ring adjacency graphs with labeled fraud nodes — `backend/ml-stubs/eval/dataset_graph.py`. (4) Audio spoof: acoustic feature descriptions + sample clips — `main.py::_heuristic_audio_features`.
 - **Effort:** 1 day | **Owner:** Kushal
 
-### T10a — Scam NLP Classifier API
+### ✅ T10a — Scam NLP Classifier API - COMPLETED
 - **Purpose:** Core scam classification. Stub must be live Day 2. | **Depends On:** T9, T2. **Unlocks:** T13.
 - **Docs:** [api/ml-contract.md](docs/api/ml-contract.md), [01-citizen-report-hitl.md](docs/architecture/sequences/01-citizen-report-hitl.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md)
-- **Deliverable:** POST /ml/scam-classify -> {score:0-100, riskTier, category, confidence, signals[], explanation}.
+- **Deliverable:** POST /ml/scam-classify -> {score:0-100, riskTier, category, confidence, signals[], explanation}. Live via Groq (`llama-3.3-70b-versatile`) with a deterministic rule-engine fallback.
 - **Effort:** 1.5 days | **Owner:** Kushal — [CRITICAL PATH — stub Day 2 EOD]
 
-### T10b — Counterfeit CV Classifier API
+### ✅ T10b — Counterfeit CV Classifier API - COMPLETED
 - **Purpose:** Currency image -> authenticity score. Basis for edge model. | **Depends On:** T9, T2. Stub Day 3.
 - **Docs:** [api/ml-contract.md](docs/api/ml-contract.md), [04-offline-counterfeit-sync.md](docs/architecture/sequences/04-offline-counterfeit-sync.md)
-- **Deliverable:** POST /ml/counterfeit-detect (image/base64) -> {score, isAuthentic, confidence, detectedFeatures[], explanation}.
+- **Deliverable:** POST /ml/counterfeit-detect (image/base64) -> {score, isAuthentic, confidence, detectedFeatures[], explanation}. Live via Groq vision (`meta-llama/llama-4-scout-17b-16e-instruct`) with deterministic fallback.
 - **Effort:** 2 days | **Owner:** Kushal
 
-### T10c — Fraud Graph Analyzer API
+### ✅ T10c — Fraud Graph Analyzer API - COMPLETED
 - **Purpose:** Entity graph -> fraud ring probability. | **Depends On:** T9, T2. Stub Day 3.
 - **Docs:** [api/ml-contract.md](docs/api/ml-contract.md), [01-citizen-report-hitl.md](docs/architecture/sequences/01-citizen-report-hitl.md)
-- **Deliverable:** POST /ml/graph-analyze (adjacency JSON) -> {score, fraudRingProbability, suspiciousNodes[], explanation}.
+- **Deliverable:** POST /ml/graph-analyze (adjacency JSON) -> {score, fraudRingProbability, suspiciousNodes[], explanation}. Fully deterministic topology scorer, no LLM dependency.
 - **Effort:** 1.5 days | **Owner:** Kushal
 
-### T10d — Audio Voice Analyzer API
+### ✅ T10d — Audio Voice Analyzer API - COMPLETED
 - **Purpose:** Detect AI-generated/spoofed voices. | **Depends On:** T9, T2. Stub Day 3.
 - **Docs:** [api/ml-contract.md](docs/api/ml-contract.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md)
-- **Deliverable:** POST /ml/audio-analyze (audio file) -> {score, isAISpoofed, confidence, voiceFeatures{pitchVariance, spectralEntropy}, explanation}.
+- **Deliverable:** POST /ml/audio-analyze (audio file) -> {score, isAISpoofed, confidence, voiceFeatures{pitchVariance, spectralEntropy}, explanation}. Live via Groq Whisper + `llama-4-scout` two-stage pipeline with deterministic fallback.
 - **Effort:** 2 days | **Owner:** Kushal
 
-### T11 — ML: Evaluation & Tuning (All Models)
+### ✅ T11 — ML: Evaluation & Tuning (All Models) - COMPLETED
 - **Purpose:** Hit acceptable precision/recall before integration freeze. | **Depends On:** T10a, T10b, T10c, T10d.
-- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md)
-- **Deliverable:** Evaluation report per model (precision, recall, F1 per category), refined prompts/features, threshold values for Orchestrator fusion config.
+- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md), [ml/evaluation-report.md](docs/ml/evaluation-report.md)
+- **Deliverable:** Evaluation report per model (precision, recall, F1 per category), refined prompts/features, threshold values for Orchestrator fusion config. Scam-NLP fallback tuned from binary recall 0.61 -> 1.00 (macro F1 0.85 -> 0.92); Graph Analyzer already at F1 1.00. Counterfeit-cv/audio-analyzer live-Groq accuracy still needs a pass with a real `GROQ_API_KEY` — see report for the ready-to-run harness.
 - **Effort:** 2 days | **Owner:** Kushal
 
-### T12 — ML: Explainability (All Models)
+### ✅ T12 — ML: Explainability (All Models) - COMPLETED
 - **Purpose:** Every verdict ships Surjit human-readable reason (NFR-8.2). | **Depends On:** T10a-T10d.
 - **Docs:** [api/ml-contract.md](docs/api/ml-contract.md)
 - **Deliverable:** signals[] array + explanation string populated in all 4 APIs. 2-3 plain-English signal strings naming specific detected features.
 - **Effort:** 0.5 day | **Owner:** Kushal
 
-### T12b — Quantized Edge Model (Offline Counterfeit Detection)
+### ✅ T12b — Quantized Edge Model (Offline Counterfeit Detection) - COMPLETED
 - **Purpose:** TFLite/ONNX model for offline use on mobile and POS terminals (FR-12). | **Depends On:** T10b, T11. [Cut first if behind by Day 7]
-- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md)
-- **Deliverable:** counterfeit_detector.tflite or .onnx (<=10MB, INT8 quantized). Python inference wrapper.
+- **Docs:** [api/ml-contract.md](docs/api/ml-contract.md), [ml/evaluation-report.md](docs/ml/evaluation-report.md)
+- **Deliverable:** `ml/edge/models/counterfeit_detector.onnx` (INT8 quantized, 4.2KB, well under the 10MB budget) + `ml/edge/edge_infer.py` Python inference wrapper (fully offline, numpy+Pillow+onnxruntime only, no network call). Trained on calibrated synthetic features (98.8% test accuracy) since no real labeled currency-image dataset exists in this repo — swap `synth_dataset()` in `ml/edge/build_edge_model.py` for real data before production use. Smoke-tested in `ml/edge/tests/smoke_edge_model.py` (3/3 passing).
 - **Effort:** 1 day | **Owner:** Kushal
 
 ---
@@ -676,8 +679,8 @@ T11 ML Tuning (Kushal)                    xx xx xx xx
 T12 Explainability (Kushal)               xx xx
 T5c Citizen UI (Surjit)                    xx xx xx xx
 T4c Dept BFFs (Diganta)                                   XX
-T5d Telecom UI (Surjit)                                      xx
-T5e Bank UI (Surjit)                                         xx
+T5d Telecom UI (Surjit)                                      XX
+T5e Bank UI (Surjit)                                         XX
 T6c Dashboard UI (Nilkanta)                  xx xx xx xx xx
 T5f Gov UI (Nilkanta)                                        xx
 T13 ML Integration (Diganta+Surjit)                    XX

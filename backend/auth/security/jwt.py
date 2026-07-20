@@ -50,7 +50,8 @@ def sign_access_token(user) -> str:
         "exp": int((now + timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)).timestamp()),
         "kid": "v1",   # Key version for rotation support
     }
-    return jwt.encode(payload, settings.JWT_PRIVATE_KEY, algorithm=settings.JWT_ALGORITHM)
+    private_key = settings.JWT_PRIVATE_KEY.strip('"\'').replace('\\n', '\n').replace('\r', '')
+    return jwt.encode(payload, private_key, algorithm=settings.JWT_ALGORITHM)
 
 
 def _create_refresh_token() -> tuple[str, str]:
@@ -91,9 +92,10 @@ def decode_token(token: str) -> dict:
     Uses the PUBLIC key only — does not sign.
     Raises JWTError on invalid/expired token.
     """
+    public_key = settings.JWT_PUBLIC_KEY.strip('"\'').replace('\\n', '\n').replace('\r', '')
     return jwt.decode(
         token,
-        settings.JWT_PUBLIC_KEY,
+        public_key,
         algorithms=[settings.JWT_ALGORITHM],
         options={"require": ["sub", "role", "jti", "exp"]},
     )

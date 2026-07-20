@@ -28,8 +28,11 @@ Once the script completes successfully, the platform is ready! You can explore t
 |---|---|---|
 | **Grafana** (Observability) | http://localhost:3000 | `admin` / `admin` |
 | **Kong Admin** (API Gateway) | http://localhost:8001 | — |
+| **Telecom Admin Portal** | http://localhost:5174 | `telecom.admin@fraud.gov.in` / `Telecom@2024!` |
+| **Bank Fraud Monitor** | http://localhost:5173 | `bank.officer@fraud.gov.in` / `BankOff@2024!` |
 | **MinIO Console** (Storage) | http://localhost:9001 | `minioadmin` / `change_me_minio` |
 | **Neo4j Browser** (Graph) | http://localhost:7474 | `neo4j` / `change_me_neo4j` |
+| **Redis Cache** | localhost:6379 | `change_me_redis` |
 
 ---
 
@@ -50,7 +53,7 @@ Once the script completes successfully, the platform is ready! You can explore t
 │   ├── geospatial/             # T8d - Geospatial Intelligence (Nilkanta)
 │   ├── notification/           # T8e — Notification + MHA Alert (Nilkanta)
 │   ├── search/                 # ✅ T8f — OpenSearch Kafka Consumer (Diganta) - COMPLETED
-│   ├── inference-orchestrator/ # T8  — Multi-source AI Fusion (Diganta)
+│   ├── inference-orchestrator/ # ✅ T8  — Multi-source AI Fusion (Diganta) - COMPLETED
 │   ├── event-processing/       # ✅ T8b — Kafka backbone + webhooks (Diganta) - COMPLETED
 │   ├── audit/                  # ✅ T7  — Immutable Audit Log (Diganta) - COMPLETED
 ├── frontend/

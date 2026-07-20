@@ -1,5 +1,7 @@
 # Redis Key Manifest
 
+> **Authentication:** The Redis instance requires a password. Use `change_me_redis` when connecting (`-a change_me_redis` with `redis-cli`, or `redis://:change_me_redis@redis:6379/0` in connection strings).
+
 | Key pattern | Type | TTL | Owner | Purpose |
 |---|---|---:|---|---|
 | `auth:denylist:{jti}` | string | remaining JWT expiry | Auth | Revoked access tokens |

@@ -94,7 +94,7 @@ def validate_contract(body):
     assert isinstance(body["confidence"], (int, float)) and 0 <= body["confidence"] <= 1
     assert isinstance(body["signals"], list) and body["signals"]
     assert isinstance(body["explanation"], str) and body["explanation"]
-    assert body["modelVersion"].startswith(("ollama:", "rules"))
+    assert body["modelVersion"].startswith(("groq:", "rules"))
 
 
 def main():
