@@ -102,7 +102,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 | **T6c** | Wave 6 (UIs) | Nilkanta | Investigator Dashboard UI |
 | **T6d** | Wave 5 (BFFs) | Nilkanta | Investigator BFF (Gateway for Dashboard) |
 | **T7** | Wave 3 (Async) | Diganta | Audit Service (Immutable Ledger) |
-| **T8** | Wave 4 (Orchestrate)| Diganta | Inference Orchestrator (Multi-source Fusion) |
+| **✅ T8** | Wave 4 (Orchestrate)| Diganta | Inference Orchestrator (Multi-source Fusion) - COMPLETED |
 | **T8b** | Wave 2 (Core) | Diganta | Event Processing Service + Kafka Backbone |
 | **T8c** | Wave 3 (Async) | Nilkanta | Entity Graph Service (Neo4j linkage) |
 | **T8d** | Wave 3 (Async) | Nilkanta | Geospatial Intelligence Service (PostGIS) |
@@ -121,7 +121,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
   - `postgres:16-alpine` — primary relational store. Services connect directly on port **5432**.
   - `postgis/postgis:16-3.4` — dedicated geospatial store (separate container, separate DB)
   - `neo4j:5-community` with `NEO4JPLUGINS=apoc` — entity graph store
-  - `redis:7-alpine` — session cache, OTP, JWT denylist, fusion weight config.
+  - `redis:7-alpine` — session cache, OTP, JWT denylist, fusion weight config. (Password: `change_me_redis`)
   - `opensearch:2` + `opensearch-dashboards:2` — CQRS search read model, faceted case search.
   - `bitnamilegacy/kafka:3.6` — Kafka 3.6 in KRaft mode (no Zookeeper). **All topics provisioned with 12 partitions.**
   - `minio/minio` — S3-compatible object store with `mc` init container to create buckets
@@ -222,6 +222,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 - **Purpose:** Omnichannel alerting with dedicated MHA webhook (<5s SLO). | **Depends On:** T3c, T8b. **Unlocks:** T13c, T15, T16.
 - **Docs:** [api/notification.md](docs/api/notification.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md), [05-geospatial-dashboard-push.md](docs/architecture/sequences/05-geospatial-dashboard-push.md)
 - **Deliverable:** POST /notify/send (SMS/Email/Push — stubbed initially), POST /notify/mha-alert (high-priority queue, <5s SLO), GET /notify/preferences/:userId. SSE for real-time push. Publishes MHAAlert.Sent. **MHA channel uses a dedicated Kafka consumer group with highest priority — separate from standard citizen notification consumer to prevent head-of-line blocking.**
+  - > **IMPORTANT (CRITICAL TIER):** MHA trigger logic must check for `riskTier in ('HIGH', 'CRITICAL')`. The inference engine can return `CRITICAL` for scores >= 90.
 - **Effort:** 1.5 days | **Owner:** Nilkanta
 
 ### ✅ T8f — Search Service (OpenSearch Kafka Consumer) - COMPLETED
@@ -234,16 +235,22 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
   - **Scalability:** OpenSearch horizontal scaling via shard routing (1 shard locally; 3 shards + 1 replica in production). Consumer group allows up to 12 pods to index in parallel (one per partition).
 - **Effort:** 1 day | **Owner:** Diganta
 
-### T7 — Audit Service
+### ✅ T7 — Audit Service - COMPLETED
 - **Purpose:** Immutable ledger — legal admissibility (NFR-6.1). | **Depends On:** T3c, T8b. **Unlocks:** T16, T6b.
 - **Docs:** [api/audit.md](docs/api/audit.md), [db/postgres.sql](docs/db/postgres.sql), [06-investigator-override-audit.md](docs/architecture/sequences/06-investigator-override-audit.md)
-- **Deliverable:** Kafka consumer on all state-change events. Append-only PostgreSQL audit_log (no UPDATE/DELETE). GET /audit/case/:id.
+- **Deliverable:**
+  - **`audit-consumer` pod** — Kafka consumer group `audit-consumer` on **12 domain event topics** (`case.created`, `case.updated`, `evidence.uploaded`, `evidence.verified`, `prediction.completed`, `prediction.overridden`, `mhaalert.sent`, `user.created`, `user.updated`, `intervention.created`, `intelligencepackage.created`, `report.generated`). Appends every event to `audit.audit_log` — the only write path in this service. 3-retry + exponential backoff + DLQ routing.
+  - **`audit` API pod** — FastAPI read-only API at port `8007`. `GET /api/v1/audit/case/{caseId}` (full chronological trail, cursor-paginated) and `GET /api/v1/audit/entity/{entityId}` (any entity, with `entityType`/`from`/`to` filters). RBAC enforces `INVESTIGATOR` or `ADMIN` role via `X-User-Role` header (forwarded by Kong JWT plugin).
+  - **DB:** `audit.audit_log` in primary PostgreSQL — protected by `platform.prevent_mutation()` trigger (no UPDATE/DELETE possible at DB level). Indexes on `(entity_id, created_at DESC)`, `(event_type, created_at DESC)`, `(correlation_id)`.
+  - **Kong:** Route `/api/v1/audit` registered with JWT plugin in `infra/kong/kong.yml`.
+  - **Smoke test:** `backend/audit/smoke_test.ps1` — 15 assertions, all passing.
 - **Effort:** 1 day | **Owner:** Diganta
 
-### T8 — Inference Orchestrator Service
+### ✅ T8 — Inference Orchestrator Service (COMPLETED)
 - **Purpose:** Parallel multi-source AI dispatch, fusion, HITL routing. Most architecturally complex service.
 - **Depends On:** T3c, T8b, T8c. **Unlocks:** T13, T5b, T13b.
 - **Docs:** [api/inference-orchestrator.md](docs/api/inference-orchestrator.md), [api/ml-contract.md](docs/api/ml-contract.md), [01-citizen-report-hitl.md](docs/architecture/sequences/01-citizen-report-hitl.md), [03-telecom-interdiction.md](docs/architecture/sequences/03-telecom-interdiction.md), [db/redis.md](docs/db/redis.md)
+- **Status:** COMPLETED. Service handles parallel dispatch, sync/async SLAs, atomic postgres transactions, and robust Kafka consumer. (Note: Uses Redis password `change_me_redis`).
 - **Deliverable:** POST /inference/analyze — parallel fan-out to all enabled ML APIs (configurable via feature flags), applies fusion weights, returns {fusedScore, riskTier, confidence, modelBreakdown[], explanation, status: COMPLETE|INCOMPLETE|PENDING_REVIEW}. Per-model timeout 2s. Low-confidence -> suppresses automated actions. Partial failure -> INCOMPLETE verdict. Persists explainability metadata. Publishes Prediction.Requested, Prediction.Completed, Prediction.Failed.
 - **Effort:** 2 days | **Owner:** Diganta — [CRITICAL PATH]
 
@@ -254,7 +261,7 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 - **Effort:** 4h | **Owner:** Surjit
 
 ### T4c — Bank, Telecom, and Gov BFFs
-- **Purpose:** API Gateways for the Bank, Telecom, and Gov portals. | **Depends On:** T4, T8b, T6b. **Unlocks:** T5d, T5e, T5f.
+- **Purpose:** API Gateways for the Bank, Telecom, and Gov portals. | **Depends On:** T4, T8b, T6b, T8e. **Unlocks:** T5d, T5e, T5f.
 - **Docs:** [api/department-bffs.md](docs/api/department-bffs.md)
 - **Deliverable:** 3 lightweight FastAPI gateways serving `/api/v1/bank/`, `/api/v1/telecom/`, and `/api/v1/gov/`. Routes to Event Processing, Notification, and Reporting services.
 - **Effort:** 4h | **Owner:** Diganta
@@ -268,7 +275,8 @@ Tasks below are presented in **topological execution order** (Wave 1 to Wave 9).
 ### T5c — Citizen UI + Bot Interface
 - **Purpose:** Citizen-facing frontend. | **Depends On:** T4b. **Unlocks:** T16.
 - **Docs:** [api/citizen-bff.md](docs/api/citizen-bff.md), [api/bot.md](docs/api/bot.md)
-- **Deliverable:** Report submission form (POST /citizen/report), risk verdict display with confidence + explanation + HITL status, bot chat widget (POST /citizen/bot/message). Built in a Vite Monorepo workspace.
+- **Deliverable:** Report submission form (POST /citizen/report), risk verdict display with confidence + explanation + HITL status, bot chat widget (POST /citizen/bot/message). Built in a Vite Monorepo workspace. React/Vite PWA. Auth via T4. Home dashboard showing past reports. Multilingual incident reporting wizard. WebSockets integration with Bot service for chat-based reporting.
+  - > **IMPORTANT (CRITICAL TIER):** The UI must implement a 4th badge color (`red-700` or `dark red`) for cases matching `riskTier == 'CRITICAL'`.
 - **Effort:** 2 days | **Owner:** Surjit
 
 ### T5d — Telecom Administrator UI

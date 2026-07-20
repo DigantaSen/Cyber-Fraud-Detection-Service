@@ -115,6 +115,12 @@ T8f
 feat(search): complete T8f OpenSearch Kafka Consumer service
 ```
 
+T7
+
+```
+feat(audit): complete T7 immutable audit service (Kafka consumer + read API)
+```
+
 ...
 
 ## Surjit

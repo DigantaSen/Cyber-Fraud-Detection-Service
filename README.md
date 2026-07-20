@@ -30,6 +30,7 @@ Once the script completes successfully, the platform is ready! You can explore t
 | **Kong Admin** (API Gateway) | http://localhost:8001 | — |
 | **MinIO Console** (Storage) | http://localhost:9001 | `minioadmin` / `change_me_minio` |
 | **Neo4j Browser** (Graph) | http://localhost:7474 | `neo4j` / `change_me_neo4j` |
+| **Redis Cache** | localhost:6379 | `change_me_redis` |
 
 ---
 
@@ -50,9 +51,9 @@ Once the script completes successfully, the platform is ready! You can explore t
 │   ├── geospatial/             # T8d - Geospatial Intelligence (Nilkanta)
 │   ├── notification/           # T8e — Notification + MHA Alert (Nilkanta)
 │   ├── search/                 # ✅ T8f — OpenSearch Kafka Consumer (Diganta) - COMPLETED
-│   ├── inference-orchestrator/ # T8  — Multi-source AI Fusion (Diganta)
+│   ├── inference-orchestrator/ # ✅ T8  — Multi-source AI Fusion (Diganta) - COMPLETED
 │   ├── event-processing/       # ✅ T8b — Kafka backbone + webhooks (Diganta) - COMPLETED
-│   └── audit/                  # T7  — Immutable Audit Log (Diganta)
+│   ├── audit/                  # ✅ T7  — Immutable Audit Log (Diganta) - COMPLETED
 ├── frontend/
 │   ├── citizen/                # T5c - Citizen UI (Surjit)
 │   ├── investigator/           # T6c - Investigator Dashboard (Nilkanta)
@@ -77,7 +78,7 @@ Once the script completes successfully, the platform is ready! You can explore t
 
 | Member | Services | Tasks |
 |---|---|---|
-| **Diganta** | Infra, Orchestrator, Event Processing, Audit, Search, BFFs | T1, T2, T3, T3b, T4c, T7, T8, ✅T8b, ✅T8f |
+| **Diganta** | Infra, Orchestrator, Event Processing, Audit, Search, BFFs | T1, T2, T3, T3b, T4c, ✅T7, T8, ✅T8b, ✅T8f |
 | **Surjit** | Auth, Case, Citizen BFF, Bot, Citizen/Bank/Telecom UIs | T4, T4b, T5a, T5b, T5c, T5d, T5e |
 | **Nilkanta** | Evidence, Reporting, Investigator BFF, Graph, Geo, Notification, Inv/Gov UIs | T6a, T6b, T6c, T6d, T5f, T8c, T8d, T8e |
 | **Kushal** | All 4 ML models + Edge sync | T9, T10a-d, T11, T12 |
