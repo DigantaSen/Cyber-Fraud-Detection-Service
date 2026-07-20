@@ -1,10 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-const BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
-const TOKEN = import.meta.env.VITE_BANK_TOKEN || '';
+const BASE = '';
 
-const headers = () => ({
-  Authorization: `Bearer ${TOKEN}`,
+const headers = (token: string) => ({
+  Authorization: `Bearer ${token}`,
   'Content-Type': 'application/json',
   'X-Correlation-ID': crypto.randomUUID(),
 });
@@ -28,28 +27,31 @@ export interface FlaggedTransaction {
   caseId?: string;
 }
 
-export const useTransactions = (riskTier?: RiskTier, status?: TxStatus) =>
+export const useTransactions = (token: string, riskTier?: RiskTier, status?: TxStatus) =>
   useQuery<FlaggedTransaction[]>({
     queryKey: ['bank-transactions', riskTier, status],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (riskTier) params.set('riskTier', riskTier);
       if (status) params.set('status', status);
-      const res = await fetch(`${BASE}/api/v1/bank/transactions?${params}`, { headers: headers() });
+      const res = await fetch(`${BASE}/api/v1/bank/transactions/flagged?${params}`, {
+        headers: headers(token),
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       return data.data?.items ?? [];
     },
+    enabled: !!token,
     refetchInterval: 30_000,
   });
 
-export const useBlockTransaction = () => {
+export const useBlockTransaction = (token: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ transactionId, reason }: { transactionId: string; reason: string }) => {
       const res = await fetch(`${BASE}/api/v1/bank/transactions/${transactionId}/block`, {
         method: 'POST',
-        headers: headers(),
+        headers: headers(token),
         body: JSON.stringify({ reason }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

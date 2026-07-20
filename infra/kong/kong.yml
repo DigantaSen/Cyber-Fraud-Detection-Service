@@ -206,4 +206,20 @@ services:
           key_claim_name: kid
 
 # ── Consumers (JWT issuers — populated after auth service is live) ──
-consumers: []
+consumers:
+  - username: platform-auth
+    jwt_secrets:
+      - key: "v1"
+        algorithm: RS256
+        rsa_public_key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnSr8QxTHhjs4PlX/q5g4
+          js+/9KMggVRl7qouCmHZFVEGjAjQaTEK2K8iqetCh45Ddxu6D9GxAjWNzBes2QWF
+          dS1hlq7eMdhYi03WvmECkYxxCRzDyZjwZMt/x5Hw0D0TGiWQ2Z64x/UOBZRMYVWj
+          yVxKkkRX6JCtya1jJmICQU0Isxk0vKlMghvr3y+OH4iZVEERDfIm5C7UQ9+yAM0y
+          yG5BAMyliCYooBzAlAqNsFP0RPkP9KHedMaHGEBa1/I7AACAj3lr/+hzTyEHPrtQ
+          PhfHj60SVHXRvLAV3LnvciriZQhYsCmmrcqkWC7m+4OPoOb06JF+G9ZyfMVOyfoT
+          AwIDAQAB
+          -----END PUBLIC KEY-----
+          
+
