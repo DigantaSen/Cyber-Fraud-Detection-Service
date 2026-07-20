@@ -175,5 +175,20 @@ services:
             - exp
           key_claim_name: kid
 
+  # Geospatial Service (T8d) - internal only, JWT required
+  - name: geo-service
+    url: http://geo:8000
+    routes:
+      - name: geo-routes
+        paths:
+          - /api/v1/geo
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
 # ── Consumers (JWT issuers — populated after auth service is live) ──
 consumers: []
