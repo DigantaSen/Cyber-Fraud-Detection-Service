@@ -607,6 +607,47 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  # ──────────────────────────────────────────────────────────
+  # Inference Orchestrator (T8) — AI Fusion Engine
+  # Single pod: FastAPI API + aiokafka consumer (background asyncio.Task)
+  # Port: 8008 (host) → 8000 (container)
+  # Internal only — NOT routed through Kong.
+  # Callers: Event Processing (sync T15), Case Service (via Kafka consumer)
+  # ──────────────────────────────────────────────────────────
+  inference-orchestrator:
+    build:
+      context: ./backend/inference-orchestrator
+    container_name: platform-inference-orchestrator
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      GRAPH_SERVICE_URL: "http://graph:8000"
+      ML_SCAM_NLP_URL: "http://ml-scam-nlp:8000"
+      ML_COUNTERFEIT_URL: "http://ml-counterfeit-cv:8000"
+      ML_GRAPH_URL: "http://ml-graph-analyzer:8000"
+      ML_AUDIO_URL: "http://ml-audio-analyzer:8000"
+      LOG_LEVEL: "INFO"
+    ports:
+      - "8008:8000"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   reporting-service:
     build:
       context: ./backend/reporting
