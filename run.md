@@ -101,17 +101,24 @@ This is the dashboard used by telecom operators (Jio, Airtel) to block fraudulen
 ---
 
 ## 5. Government / MHA Admin Dashboard
-This is the overarching national dashboard used by NCRB and MHA directors to view macro-level threats.
+This is the overarching national dashboard used by NCRB and MHA directors to view macro-level threats, incoming alerts, and intelligence packages.
 
-- **How to Start the UI (via Docker):** *(Assumes the gov-mha frontend is built)*
+- **How to Start the UI (via Docker):**
   ```bash
   docker run -d --name gov-ui -p 5176:5176 -v $(pwd):/app -w /app/frontend/gov-mha node:22 sh -c "npm install && npm run dev -- --host"
   ```
 - **Access URL:** `http://localhost:5176`
 - **Role:** `GOV_OFFICIAL`
+- **Dummy Registration Credentials:**
+  - **Email:** `director.mha@gov.in`
+  - **Password:** `AdminSecure123!`
+  - **Phone:** `+911123456789`
+  - **Jurisdiction ID:** `JUR-MHA-01`
 
 ### 🧪 What to Check
-1. Open the URL and Sign In.
-2. Ensure the dashboard is receiving high-priority notifications (<5s latency) for CRITICAL tiered cases (e.g., terrorism financing or massive syndicates).
-3. Review the **National Threat Heatmap** to see aggregated geospatial hotspots across the country.
-4. View the **System Audits** to see immutable audit logs of Investigator HITL overrides and cross-agency freeze/block actions.
+1. Go to `http://localhost:5176/register` and click **Create Account**.
+2. Register using the dummy credentials and ensure you select the **GOV_OFFICIAL** role from the dropdown. Enter a jurisdiction ID (e.g., `JUR-MHA-01`).
+3. Sign in with the credentials at `http://localhost:5176/login`.
+4. On the homepage, you will see two tabs: **Live MHA Alerts** and **Intelligence Packages**.
+5. Ensure the **Live MHA Alerts** tab is receiving real-time SSE notifications for critical tiered cases (e.g., "FRAUD_RING_DETECTED").
+6. Click on the **Intelligence Packages** tab to view generated PDF reports (these are created when Investigators click "Generate Intelligence Package" on their dashboard). You should see download links for each report.
