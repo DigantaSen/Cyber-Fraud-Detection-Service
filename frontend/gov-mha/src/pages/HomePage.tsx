@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 export default function HomePage() {
-  const { token, clearAuth } = useAuthStore();
+  const { accessToken, clearAuth } = useAuthStore();
   const navigate = useNavigate();
   
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -21,7 +21,7 @@ export default function HomePage() {
     const fetchAlerts = async () => {
       try {
         const res = await axios.get('/api/v1/gov/alerts', {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${accessToken}` }
         });
         setAlerts(res.data.items || []);
       } catch (err) {
@@ -32,7 +32,7 @@ export default function HomePage() {
     const fetchReports = async () => {
       try {
         const res = await axios.get('/api/v1/gov/reports', {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${accessToken}` }
         });
         setReports(res.data.items || []);
       } catch (err) {
@@ -40,17 +40,17 @@ export default function HomePage() {
       }
     };
 
-    if (token) {
+    if (accessToken) {
       setLoading(true);
       Promise.all([fetchAlerts(), fetchReports()]).finally(() => setLoading(false));
     }
-  }, [token]);
+  }, [accessToken]);
 
   // Setup SSE for real-time alerts
   useEffect(() => {
-    if (!token) return;
+    if (!accessToken) return;
     
-    const eventSource = new EventSource('/api/v1/gov/stream?token=' + token);
+    const eventSource = new EventSource('/api/v1/gov/stream?token=' + accessToken);
     
     eventSource.addEventListener('mha_alert', (e) => {
       try {
@@ -62,7 +62,7 @@ export default function HomePage() {
     });
 
     return () => eventSource.close();
-  }, [token]);
+  }, [accessToken]);
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
