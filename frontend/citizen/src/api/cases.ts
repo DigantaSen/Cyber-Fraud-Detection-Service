@@ -60,6 +60,24 @@ export const useCaseStatus = (caseId: string | null) =>
     refetchInterval: 30_000,   // Poll every 30s for status updates
   });
 
+export interface CaseSummary {
+  caseId: string;
+  caseNumber: string;
+  title: string;
+  complaintType: string;
+  status: string;
+  createdAt: string;
+}
+
+export const useMyCases = () =>
+  useQuery({
+    queryKey: ['my-cases'],
+    queryFn: async () => {
+      const res = await apiClient.get('/api/v1/citizen/cases');
+      return res.data.data.items as CaseSummary[];
+    },
+  });
+
 // ─── Evidence: Request Pre-signed Upload URL ──────────────────────────────────
 
 export const useRequestUploadUrl = (caseId: string) => {
@@ -100,3 +118,22 @@ export const useConfirmUpload = () =>
     },
   });
 
+export interface EvidenceItem {
+  evidenceId: string;
+  fileName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  status: string;
+  createdAt: string | null;
+  verifiedAt: string | null;
+}
+
+export const useEvidenceList = (caseId: string | null) =>
+  useQuery({
+    queryKey: ['evidence', caseId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/api/v1/citizen/cases/${caseId}/evidence`);
+      return res.data.data as EvidenceItem[];
+    },
+    enabled: !!caseId,
+  });

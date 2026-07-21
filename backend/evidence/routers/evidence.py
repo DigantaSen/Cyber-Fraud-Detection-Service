@@ -81,6 +81,24 @@ async def request_upload(case_id: str, payload: UploadRequest, db: AsyncSession 
 
     return {"evidenceId": str(evidence_id), "uploadUrl": presigned_url}
 
+@router.get("/cases/{case_id}/evidence")
+async def get_case_evidence(case_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Evidence).filter(Evidence.case_id == uuid.UUID(case_id)))
+    items = result.scalars().all()
+    
+    return [
+        {
+            "evidenceId": str(item.evidence_id),
+            "fileName": item.file_name,
+            "mimeType": item.mime_type,
+            "fileSizeBytes": item.file_size_bytes,
+            "status": item.status,
+            "createdAt": item.created_at.isoformat().replace("+00:00", "Z") if item.created_at else None,
+            "verifiedAt": item.verified_at.isoformat().replace("+00:00", "Z") if item.verified_at else None
+        }
+        for item in items
+    ]
+
 @router.post("/evidence/{evidence_id}/confirm")
 async def confirm_upload(evidence_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Evidence).filter(Evidence.evidence_id == uuid.UUID(evidence_id)))

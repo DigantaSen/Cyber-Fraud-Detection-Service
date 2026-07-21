@@ -1,7 +1,7 @@
 import ReportForm from '../components/ReportForm';
 import BotWidget from '../components/BotWidget';
 import { useAuthStore } from '../store/authStore';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 export default function HomePage() {
   const clearAuth = useAuthStore((state) => state.clearAuth);
@@ -13,12 +13,20 @@ export default function HomePage() {
   };
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <button 
-        onClick={handleLogout} 
-        className="absolute top-4 right-4 bg-white/50 hover:bg-white text-blue-900 px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
-      >
-        Sign Out
-      </button>
+      <div className="absolute top-4 right-4 flex gap-4">
+        <Link 
+          to="/my-cases"
+          className="bg-white/50 hover:bg-white text-blue-900 px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
+        >
+          My Reports
+        </Link>
+        <button 
+          onClick={handleLogout} 
+          className="bg-white/50 hover:bg-white text-blue-900 px-4 py-2 rounded-lg font-medium transition-colors shadow-sm"
+        >
+          Sign Out
+        </button>
+      </div>
       <div className="container mx-auto px-4 py-12">
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold text-gray-900 mb-3">
