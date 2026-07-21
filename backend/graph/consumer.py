@@ -1,3 +1,4 @@
+import uuid
 import asyncio
 import json
 import logging
@@ -93,11 +94,41 @@ async def process_message(driver, msg, producer):
                 case_id = data.get("caseId")
                 status = data.get("status") or data.get("verdictStatus") or data.get("newState") or data.get("newStatus")
                 decision = data.get("decision")
+                suspect_phone = data.get("suspectPhone")
+                suspect_account = data.get("suspectAccount")
+
                 if case_id and (status in ["Action_Taken", "CONFIRMED_FRAUD"] or decision == "APPROVE"):
+                    # Fallback fetch from DB if suspect_phone/account not in event payload
+                    if not suspect_phone and not suspect_account:
+                        try:
+                            import asyncpg
+                            conn = await asyncpg.connect(settings.DATABASE_URL)
+                            row = await conn.fetchrow("SELECT suspect_phone, suspect_account, title FROM investigation.cases WHERE case_id = $1::uuid", uuid.UUID(case_id))
+                            await conn.close()
+                            if row:
+                                suspect_phone = row["suspect_phone"]
+                                suspect_account = row["suspect_account"]
+                        except Exception as ex:
+                            logger.warning(f"Failed to fetch case details from DB: {ex}")
+
                     await session.run(
                         "MERGE (c:Entity:Case {id: $caseId}) SET c.status = 'Action_Taken', c.isConfirmed = true",
                         caseId=case_id
                     )
+                    if suspect_phone:
+                        await session.run(
+                            "MERGE (p:Entity:Phone {id: $phone}) SET p.fraudScore = 95.0, p.isFraud = true "
+                            "MERGE (c:Entity:Case {id: $caseId}) "
+                            "MERGE (p)-[:LINKED_TO]->(c)",
+                            phone=suspect_phone, caseId=case_id
+                        )
+                    if suspect_account:
+                        await session.run(
+                            "MERGE (a:Entity:Account {id: $acc}) SET a.fraudScore = 95.0, a.isFraud = true "
+                            "MERGE (c:Entity:Case {id: $caseId}) "
+                            "MERGE (a)-[:LINKED_TO]->(c)",
+                            acc=suspect_account, caseId=case_id
+                        )
 
     except Exception as e:
         logger.error(f"Error processing message from topic {msg.topic()}: {e}")

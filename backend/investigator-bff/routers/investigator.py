@@ -204,11 +204,10 @@ async def get_case_graph(
 ):
     headers = _forward_headers(request, current_user)
     case_result = await _proxy(case_client, "GET", f"/api/v1/cases/{case_id}", headers=headers)
-    case_data = case_result.get("data", {})
-    suspect_phone = case_data.get("suspectPhone")
-    if suspect_phone:
-        return await _proxy(graph_client, "GET", "/api/v1/graph/linkages", params={"entityId": suspect_phone, "hops": 2}, headers=headers)
-    return success_response({}, _corr(request))
+    raw_data = case_result.get("data", {})
+    case_data = raw_data.get("case", raw_data) if isinstance(raw_data, dict) else {}
+    entity_id = case_data.get("suspectPhone") or case_data.get("suspect_phone") or case_data.get("suspectAccount") or case_data.get("suspect_account") or case_id
+    return await _proxy(graph_client, "GET", "/api/v1/graph/linkages", params={"entityId": entity_id, "hops": 2}, headers=headers)
 
 @router.post("/cases/{case_id}/evidence")
 async def upload_evidence(

@@ -64,7 +64,7 @@ async def get_hotspots(
         ST_X(geom::geometry) AS lon,
         ST_Y(geom::geometry) AS lat
     FROM fraud_hotspot
-    WHERE geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)
+    WHERE geom::geometry && ST_MakeEnvelope($1, $2, $3, $4, 4326)
     """
     
     params = [min_lon, min_lat, max_lon, max_lat]

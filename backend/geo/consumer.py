@@ -1,3 +1,4 @@
+import uuid
 import asyncio
 import json
 import logging
@@ -25,6 +26,16 @@ async def process_message(db_pool, msg, producer):
             lon = data.get("complaintLon")
             risk_tier = data.get("riskTier", "LOW")
             
+            if case_id:
+                if lat is None or lon is None:
+                    async with db_pool.acquire() as conn:
+                        row = await conn.fetchrow("SELECT complaint_lat, complaint_lon, jurisdiction_id FROM investigation.cases WHERE case_id = $1::uuid", uuid.UUID(case_id))
+                        if row:
+                            lat = float(row["complaint_lat"]) if row["complaint_lat"] is not None else None
+                            lon = float(row["complaint_lon"]) if row["complaint_lon"] is not None else None
+                            if row["jurisdiction_id"]:
+                                jurisdiction = row["jurisdiction_id"]
+
             if case_id and lat is not None and lon is not None:
                 # Truncate location to some precision to cluster nearby incidents
                 # or just use lat,lon hash. The contract says location_hash.

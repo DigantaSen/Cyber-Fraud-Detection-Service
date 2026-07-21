@@ -12,6 +12,7 @@ export default function CaseStatusPage() {
   const { accessToken: token } = useAuthStore();
   
   const [data, setData] = useState<any>(null);
+  const [graphData, setGraphData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
   // HITL & Investigation State
@@ -29,6 +30,15 @@ export default function CaseStatusPage() {
           headers: { Authorization: `Bearer ${token}` }
         });
         setData(res.data.data || res.data);
+        
+        try {
+          const gRes = await axios.get(`/api/v1/investigator/cases/${caseId}/graph`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setGraphData(gRes.data.data || gRes.data || {});
+        } catch (ge) {
+          console.warn("Failed to fetch graph data", ge);
+        }
       } catch (err) {
         console.error("Failed to fetch case details", err);
       } finally {
@@ -162,7 +172,7 @@ export default function CaseStatusPage() {
   const complaint_lat = c.complaintLat != null ? parseFloat(c.complaintLat) : null;
   const complaint_lon = c.complaintLon != null ? parseFloat(c.complaintLon) : null;
   const prediction = data.prediction || c.prediction || {};
-  const graphSummary = data.graphSummary || {};
+  const graphSummary = graphData || data?.graphSummary || {};
   const nearbyHotspots = data.nearbyHotspots || [];
 
   return (

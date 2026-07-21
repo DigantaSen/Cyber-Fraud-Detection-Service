@@ -56,8 +56,7 @@ async def get_linkages(
         result = await session.run("MATCH (anchor:Entity {id: $entityId}) RETURN anchor", entityId=entityId)
         anchor_record = await result.single()
         if not anchor_record:
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=404, content=error_response("ENTITY_NOT_FOUND", "Entity not found in graph", correlation_id))
+            return success_response({"anchor": entityId, "nodes": [], "edges": []}, correlation_id)
 
         anchor_node = anchor_record["anchor"]
         

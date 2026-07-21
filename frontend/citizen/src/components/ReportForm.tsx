@@ -257,6 +257,8 @@ function StepDetails({ form, setForm, onBack, onNext }: StepProps) {
 
 function LocationPicker({ form, setForm }: Pick<StepProps, 'form' | 'setForm'>) {
   const [locStatus, setLocStatus] = React.useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
+  const [manualLat, setManualLat] = React.useState<string>(form.complaint_lat != null ? String(form.complaint_lat) : '');
+  const [manualLon, setManualLon] = React.useState<string>(form.complaint_lon != null ? String(form.complaint_lon) : '');
 
   const useMyLocation = () => {
     if (!navigator.geolocation) {
@@ -266,10 +268,14 @@ function LocationPicker({ form, setForm }: Pick<StepProps, 'form' | 'setForm'>) 
     setLocStatus('loading');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        const lat = parseFloat(pos.coords.latitude.toFixed(6));
+        const lon = parseFloat(pos.coords.longitude.toFixed(6));
+        setManualLat(String(lat));
+        setManualLon(String(lon));
         setForm({
           ...form,
-          complaint_lat: parseFloat(pos.coords.latitude.toFixed(6)),
-          complaint_lon: parseFloat(pos.coords.longitude.toFixed(6)),
+          complaint_lat: lat,
+          complaint_lon: lon,
         });
         setLocStatus('ok');
       },
@@ -277,59 +283,87 @@ function LocationPicker({ form, setForm }: Pick<StepProps, 'form' | 'setForm'>) 
     );
   };
 
+  const applyManualCoordinates = () => {
+    const latNum = parseFloat(manualLat);
+    const lonNum = parseFloat(manualLon);
+    if (!isNaN(latNum) && !isNaN(lonNum)) {
+      setForm({
+        ...form,
+        complaint_lat: latNum,
+        complaint_lon: lonNum,
+      });
+      setLocStatus('ok');
+    }
+  };
+
   const clearLocation = () => {
     setForm({ ...form, complaint_lat: undefined, complaint_lon: undefined });
+    setManualLat('');
+    setManualLon('');
     setLocStatus('idle');
   };
 
+  const isCaptured = form.complaint_lat != null && form.complaint_lon != null;
+
   return (
-    <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
-      <label className="block text-sm font-medium text-gray-700 mb-2">📍 Incident Location <span className="text-xs text-gray-400">(Optional — helps geo-hotspot analysis)</span></label>
+    <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50 space-y-3">
+      <label className="block text-sm font-medium text-gray-700">📍 Incident Location <span className="text-xs text-gray-400">(Optional — helps geo-hotspot analysis)</span></label>
       
-      {form.complaint_lat && form.complaint_lon ? (
+      {isCaptured ? (
         <div className="flex items-center gap-3">
-          <div className="flex-1 bg-white border border-green-300 rounded-lg p-3 text-sm text-green-700">
-            ✅ Location captured: <strong>{form.complaint_lat.toFixed(4)}, {form.complaint_lon.toFixed(4)}</strong>
+          <div className="flex-1 bg-white border border-green-300 rounded-lg p-3 text-sm text-green-700 flex items-center justify-between">
+            <span>✅ Location confirmed: <strong>{form.complaint_lat?.toFixed(5)}, {form.complaint_lon?.toFixed(5)}</strong></span>
           </div>
           <button
             type="button"
             onClick={clearLocation}
-            className="text-xs text-red-500 hover:text-red-700 underline whitespace-nowrap"
+            className="text-xs text-red-500 hover:text-red-700 underline font-semibold whitespace-nowrap"
           >
-            Clear
+            Clear / Edit
           </button>
         </div>
       ) : (
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={useMyLocation}
-            disabled={locStatus === 'loading'}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            {locStatus === 'loading' ? '⏳ Getting location...' : '📍 Use My Current Location'}
-          </button>
-          <span className="text-xs text-gray-400">or enter manually:</span>
-          <input
-            type="number"
-            step="0.000001"
-            placeholder="Lat"
-            className="w-24 p-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-            value={form.complaint_lat ?? ''}
-            onChange={(e) => setForm({ ...form, complaint_lat: e.target.value ? parseFloat(e.target.value) : undefined })}
-          />
-          <input
-            type="number"
-            step="0.000001"
-            placeholder="Lon"
-            className="w-24 p-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-            value={form.complaint_lon ?? ''}
-            onChange={(e) => setForm({ ...form, complaint_lon: e.target.value ? parseFloat(e.target.value) : undefined })}
-          />
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={useMyLocation}
+              disabled={locStatus === 'loading'}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
+            >
+              {locStatus === 'loading' ? '⏳ Getting location...' : '📍 Use My GPS Location'}
+            </button>
+            <span className="text-xs text-gray-400 font-medium">OR Enter Coordinates:</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Latitude (e.g. 19.0760)"
+              className="flex-1 p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono"
+              value={manualLat}
+              onChange={(e) => setManualLat(e.target.value)}
+            />
+            <input
+              type="text"
+              placeholder="Longitude (e.g. 72.8777)"
+              className="flex-1 p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono"
+              value={manualLon}
+              onChange={(e) => setManualLon(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={applyManualCoordinates}
+              disabled={!manualLat.trim() || !manualLon.trim()}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-300 text-white text-sm font-bold rounded-lg transition-colors shadow-sm flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+            >
+              <span>✓ Apply Location</span>
+            </button>
+          </div>
         </div>
       )}
       {locStatus === 'error' && (
-        <p className="text-red-500 text-xs mt-2">Could not get your location. Please allow location access or enter manually.</p>
+        <p className="text-red-500 text-xs">Could not get your location. Please allow GPS access or type coordinates above.</p>
       )}
     </div>
   );
