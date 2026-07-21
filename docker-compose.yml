@@ -787,32 +787,6 @@ services:
         condition: service_healthy
     healthcheck:
       disable: true
-  # Auth Service
-  auth:
-    build:
-      context: ./backend/auth
-    container_name: platform-auth
-    restart: unless-stopped
-    ports:
-      - "8014:8000"
-    environment:
-      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/cyberfraud"
-      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
-      JWT_SECRET: "mock_jwt_secret_for_dev_only"
-      LOG_LEVEL: "DEBUG"
-    networks:
-      - platform-net
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
 
   investigator-bff:
     build:
@@ -821,23 +795,6 @@ services:
     restart: unless-stopped
     ports:
       - "8008:8000"
-    environment:
-      LOG_LEVEL: "INFO"
-    networks:
-      - platform-net
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-  gov-bff:
-    build:
-      context: ./backend/gov-bff
-    container_name: platform-gov-bff
-    restart: unless-stopped
-    ports:
-      - "8016:8000"
     environment:
       LOG_LEVEL: "INFO"
     networks:
