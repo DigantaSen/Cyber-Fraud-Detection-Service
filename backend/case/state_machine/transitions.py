@@ -21,6 +21,7 @@ Usage:
 
 VALID_TRANSITIONS: frozenset[tuple[str, str]] = frozenset({
     ("New",           "Assigned"),
+    ("New",           "Pending_AI"),  # inference could not produce an automatable verdict
     ("Assigned",      "Investigating"),
     ("Investigating", "Pending_AI"),
     ("Pending_AI",    "Investigating"),   # AI_TIMEOUT re-entry OR HITL review restart
@@ -38,6 +39,7 @@ REASON_REQUIRED_TRANSITIONS: dict[tuple[str, str], list[str]] = {
 # "SYSTEM" = internal service-to-service call (Orchestrator, no user JWT).
 ROLE_ALLOWED_TRANSITIONS: dict[tuple[str, str], list[str]] = {
     ("New",           "Assigned"):       ["INVESTIGATOR", "ADMIN"],
+    ("New",           "Pending_AI"):     ["SYSTEM"],
     ("Assigned",      "Investigating"):  ["INVESTIGATOR", "ADMIN"],
     ("Investigating",  "Pending_AI"):    ["SYSTEM"],
     ("Pending_AI",    "Investigating"):  ["SYSTEM", "INVESTIGATOR", "ADMIN"],

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from models.prediction import FusedVerdict
 
@@ -55,3 +56,13 @@ class PredictionRepository:
         self._session.add(verdict)
         await self._session.flush()
         return verdict
+
+    async def latest_for_case(self, case_id: uuid.UUID) -> Optional[FusedVerdict]:
+        """Return the most recent immutable fused verdict for a case."""
+        result = await self._session.execute(
+            select(FusedVerdict)
+            .where(FusedVerdict.case_id == case_id)
+            .order_by(FusedVerdict.fusion_timestamp.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()

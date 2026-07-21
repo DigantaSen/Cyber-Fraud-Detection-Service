@@ -8,7 +8,7 @@ Falls back to .env file for local development.
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parent
 
 
 class Settings(BaseSettings):

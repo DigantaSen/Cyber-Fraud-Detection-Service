@@ -20,6 +20,7 @@ PATTERNS ESTABLISHED HERE:
 - Vault secret loading at startup (graceful fallback to env vars for local dev)
 """
 
+import asyncio
 import sys
 import uuid
 import time
@@ -74,6 +75,11 @@ async def lifespan(app: FastAPI):
     app.state.db_session_factory = get_session_factory(engine)
     app.state.redis = create_redis_client()
     await app.state.redis.ping()
+
+    from prediction_consumer import run_prediction_consumer
+    prediction_task = asyncio.create_task(
+        run_prediction_consumer(app.state.db_session_factory)
+    )
     
     # Shared HTTP client for downstream calls (Inference Orchestrator)
     app.state.http_client = httpx.AsyncClient(
@@ -85,6 +91,11 @@ async def lifespan(app: FastAPI):
     yield
     
     logger.info(f"{settings.SERVICE_NAME} shutting down")
+    prediction_task.cancel()
+    try:
+        await prediction_task
+    except asyncio.CancelledError:
+        pass
     await app.state.db_engine.dispose()
     await app.state.redis.aclose()
     await app.state.http_client.aclose()

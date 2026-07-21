@@ -83,7 +83,9 @@ async def create_case(
 
 # ── Get Case ──────────────────────────────────────────────────────────────────
 
-@router.get("/{case_id}")
+# Use Starlette's UUID path converter so the static ``/my`` route below is not
+# swallowed by this dynamic route before it can be matched.
+@router.get("/{case_id:uuid}")
 async def get_case(
     request: Request,
     case_id: uuid.UUID,

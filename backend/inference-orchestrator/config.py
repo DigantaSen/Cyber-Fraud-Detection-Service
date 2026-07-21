@@ -31,7 +31,8 @@ class Settings(BaseSettings):
     TOPIC_PREDICTION_FAILED: str = "prediction.failed"
 
     # ── Internal service URLs (no Kong, no JWT) ─────────────────
-    GRAPH_SERVICE_URL: str = "http://graph:8000"
+    GRAPH_SERVICE_URL: str = "http://graph:8000/api/v1"
+    EVIDENCE_SERVICE_URL: str = "http://evidence:8000"
     ML_SCAM_NLP_URL: str = "http://ml-scam-nlp:8000"
     ML_COUNTERFEIT_URL: str = "http://ml-counterfeit-cv:8000"
     ML_GRAPH_URL: str = "http://ml-graph-analyzer:8000"

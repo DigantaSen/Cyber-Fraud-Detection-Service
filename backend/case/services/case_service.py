@@ -24,6 +24,7 @@ from models.schemas import (
     CaseDetailResponse,
     CreateCaseRequest,
     CreateCaseResponse,
+    PredictionSummary,
     UpdateCaseStateRequest,
     VerdictOverrideRequest,
 )
@@ -142,8 +143,11 @@ class CaseService:
             payload={
                 "caseId": str(case.case_id),
                 "caseNumber": case_number,
+                "title": req.title,
+                "description": req.description,
                 "complaintType": req.complaint_type,
                 "suspectPhone": req.suspect_phone,
+                "suspectAccount": req.suspect_account,
                 "complaintLat": req.complaint_lat,
                 "complaintLon": req.complaint_lon,
                 "jurisdictionId": jurisdiction_id,
@@ -209,7 +213,7 @@ class CaseService:
         if case.jurisdiction_id != jurisdiction_id:
             raise CasePermissionError("Case does not belong to your jurisdiction")
 
-        return self._to_detail_response(case)
+        return await self._to_detail_response(case)
 
     # ── State Transition ──────────────────────────────────────────────────────
 
@@ -280,7 +284,7 @@ class CaseService:
         )
         await self._db.commit()
 
-        return self._to_detail_response(updated)
+        return await self._to_detail_response(updated)
 
     # ── Pending Review (Inference Callback) ───────────────────────────────────
 
@@ -475,12 +479,79 @@ class CaseService:
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
-    def _to_detail_response(self, case) -> CaseDetailResponse:
+    async def apply_prediction_result(
+        self,
+        prediction_payload: dict,
+        correlation_id: uuid.UUID,
+    ) -> None:
+        """Apply a published inference result without duplicating its verdict row.
+
+        The Orchestrator owns writes to ``inference.predictions`` and
+        ``inference.fused_verdicts``.  Case Service only changes workflow state
+        and appends an audit timeline entry for review-required outcomes.
+        """
+        case_id = uuid.UUID(prediction_payload["caseId"])
+        case = await self._case_repo.get_by_id(case_id)
+        if not case:
+            raise CaseNotFoundError(f"Case {case_id} not found")
+
+        review_required = (
+            prediction_payload.get("pendingReview", False)
+            or prediction_payload.get("status") in {"INCOMPLETE", "PENDING_REVIEW"}
+        )
+        if not review_required or case.status == "Pending_AI":
+            return
+
+        validate_transition(case.status, "Pending_AI", "PREDICTION_REQUIRES_REVIEW", "SYSTEM")
+        await self._case_repo.update_state(case_id, "Pending_AI")
+        await self._outbox_repo.publish(
+            aggregate_type="Case",
+            aggregate_id=case_id,
+            event_type="Case.Updated",
+            topic="case.updated",
+            event_key=str(case_id),
+            payload={
+                "caseId": str(case_id),
+                "newState": "Pending_AI",
+                "reason": prediction_payload.get("status", "PREDICTION_REQUIRES_REVIEW"),
+                "predictionId": prediction_payload.get("predictionId"),
+            },
+            correlation_id=correlation_id,
+        )
+        await self._timeline_repo.append(
+            case_id=case_id,
+            event_type="Prediction.PendingReview",
+            description=(
+                f"AI result {prediction_payload.get('status')} requires human review. "
+                f"Confidence: {float(prediction_payload.get('confidence', 0)):.0%}."
+            ),
+            metadata={
+                "predictionId": prediction_payload.get("predictionId"),
+                "status": prediction_payload.get("status"),
+            },
+            correlation_id=correlation_id,
+        )
+        await self._db.commit()
+
+    async def _to_detail_response(self, case) -> CaseDetailResponse:
         """
         Convert Case ORM → CaseDetailResponse.
         prediction: ML stub until T13 wires the real Inference Orchestrator.
         evidence_count: 0 stub until T14 cross-wiring (see assumptions.md).
         """
+        verdict = await PredictionRepository(self._db).latest_for_case(case.case_id)
+        prediction = None
+        if verdict:
+            prediction = PredictionSummary(
+                prediction_id=verdict.prediction_id,
+                fused_score=verdict.fused_score,
+                risk_tier=verdict.risk_tier,
+                confidence=verdict.confidence,
+                status=verdict.status,
+                model_breakdown=verdict.model_breakdown,
+                explanation=verdict.explanation,
+                created_at=verdict.fusion_timestamp,
+            )
         return CaseDetailResponse(
             case_id=case.case_id,
             case_number=case.case_number,
@@ -497,7 +568,7 @@ class CaseService:
             assigned_to=case.assigned_investigator,
             jurisdiction_id=case.jurisdiction_id,
             priority=case.priority,
-            prediction=None,    # TODO T13: replace with real FusedVerdict query
+            prediction=prediction,
             evidence_count=0,   # TODO T14: count from evidence.evidence table
             created_at=case.created_at,
             updated_at=case.updated_at,

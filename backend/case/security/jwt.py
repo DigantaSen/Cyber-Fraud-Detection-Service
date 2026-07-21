@@ -30,9 +30,10 @@ def decode_token(token: str) -> dict:
     Uses the PUBLIC key only — does not sign.
     Raises JWTError on invalid/expired token.
     """
+    public_key = settings.JWT_PUBLIC_KEY.strip('"\'').replace('\\n', '\n').replace('\r', '')
     return jwt.decode(
         token,
-        settings.JWT_PUBLIC_KEY,
+        public_key,
         algorithms=[settings.JWT_ALGORITHM],
         options={"require": ["sub", "role", "jti", "exp"]},
     )

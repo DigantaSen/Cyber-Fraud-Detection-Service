@@ -10,6 +10,7 @@ alembic==1.13.1
 
 # Kafka
 confluent-kafka==2.4.0
+aiokafka==0.11.0
 
 # Redis
 redis[hiredis]==5.0.4
@@ -33,6 +34,9 @@ loguru==0.7.2
 python-multipart==0.0.9
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+
+# Fix for Python 3.12: pkg_resources is no longer bundled
+setuptools==69.5.1
 
 # Testing
 pytest==8.2.1
