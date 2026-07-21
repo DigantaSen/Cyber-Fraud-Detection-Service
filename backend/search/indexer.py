@@ -86,7 +86,12 @@ def handle_case_updated(payload: dict):
 
     # Only update fields that are present in the payload to avoid wiping fields.
     partial = {}
-    for field in ["title", "description", "notes", "status", "riskTier",
+    if "status" in payload:
+        partial["status"] = payload["status"]
+    elif "newState" in payload:
+        partial["status"] = payload["newState"]
+
+    for field in ["title", "description", "notes", "riskTier",
                   "assignedInvestigator", "complaintType", "updatedAt"]:
         if field in payload:
             partial[field] = payload[field]
@@ -136,11 +141,39 @@ def handle_prediction_completed(payload: dict):
             logger.warning(f"[prediction.completed] Could not update case {case_id} (may not exist yet): {e}")
 
 
+
+def handle_prediction_overridden(payload: dict):
+    """Partial update of a case when an investigator overrides the verdict."""
+    case_id = payload.get("caseId") or payload.get("case_id")
+    if not case_id:
+        raise ValueError(f"prediction.overridden payload missing caseId: {payload}")
+
+    new_state = payload.get("newState")
+    decision = payload.get("decision")
+    disposition = payload.get("disposition")
+
+    partial = {}
+    if new_state:
+        partial["status"] = new_state
+    if decision:
+        partial["verdictStatus"] = "CONFIRMED_FRAUD" if decision == "APPROVE" else "DISMISSED"
+    if disposition:
+        partial["disposition"] = disposition
+
+    if partial:
+        try:
+            os_client.update(index="case_index", id=case_id, body={"doc": partial})
+            logger.info(f"[prediction.overridden] Updated case {case_id} status to {partial.get('status')}")
+        except Exception as e:
+            logger.warning(f"[prediction.overridden] Could not update case {case_id}: {e}")
+
+
 TOPIC_HANDLERS: dict[str, Callable[[dict], None]] = {
     "case.created":          handle_case_created,
     "case.updated":          handle_case_updated,
     "evidence.uploaded":     handle_evidence_uploaded,
     "prediction.completed":  handle_prediction_completed,
+    "prediction.overridden": handle_prediction_overridden,
 }
 
 TOPICS = list(TOPIC_HANDLERS.keys())

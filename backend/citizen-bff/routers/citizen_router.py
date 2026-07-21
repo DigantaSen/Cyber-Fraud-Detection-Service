@@ -55,9 +55,10 @@ async def _proxy(client: httpx.AsyncClient, method: str, path: str, **kwargs) ->
         raise HTTPException(status_code=503, detail={"errorCode": "SERVICE_UNAVAILABLE", "message": "Downstream service unavailable"})
 
 
-# ── POST /citizen/report ──────────────────────────────────────────────────────
+# ── POST /citizen/report & POST /citizen/cases ────────────────────────────────
 
 @router.post("/report", status_code=201)
+@router.post("/cases", status_code=201)
 async def submit_report(
     request: Request,
     body: dict,
@@ -156,6 +157,9 @@ async def get_case_evidence(
         evidence_client, "GET", f"/cases/{case_id}/evidence",
         headers=_forward_headers(request, current_user),
     )
+    # Evidence service returns a plain list [] — wrap in success envelope for frontend
+    if isinstance(result, list):
+        return success_response(result, _corr(request))
     return result
 
 
@@ -175,11 +179,11 @@ async def upload_evidence(
     body = await request.body()
     content_type = request.headers.get("Content-Type", "application/json")
     result = await _proxy(
-        evidence_client, "POST", f"/api/v1/evidence/{case_id}",
+        evidence_client, "POST", f"/cases/{case_id}/evidence",
         content=body,
         headers={**_forward_headers(request, current_user), "Content-Type": content_type},
     )
-    return result
+    return success_response(result, _corr(request))
 
 
 # ── POST /citizen/evidence/:evidenceId/confirm ────────────────────────────────
@@ -193,7 +197,7 @@ async def confirm_evidence(
 ):
     """Confirm evidence. Proxies to Evidence Service."""
     result = await _proxy(
-        evidence_client, "POST", f"/api/v1/evidence/{evidence_id}/confirm",
+        evidence_client, "POST", f"/evidence/{evidence_id}/confirm",
         headers=_forward_headers(request, current_user),
     )
-    return result
+    return success_response(result, _corr(request))

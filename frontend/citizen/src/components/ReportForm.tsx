@@ -21,6 +21,11 @@ export default function ReportForm() {
     title: '',
     description: '',
     suspect_phone: '',
+    suspect_account: '',
+    complaint_lat: undefined,
+    complaint_lon: undefined,
+    reporter_entity_name: '',
+    reporter_phone: '',
     language_code: 'en',
   });
   const navigate = useNavigate();
@@ -104,17 +109,21 @@ function StepComplaintType({ form, setForm, onNext }: StepProps) {
 }
 
 function StepDetails({ form, setForm, onBack, onNext }: StepProps) {
-  const [errors, setErrors] = useState({ title: '', description: '', suspect_phone: '' });
+  const [errors, setErrors] = useState({ title: '', description: '', suspect_phone: '', reporter_phone: '' });
 
   const validate = () => {
     let valid = true;
-    const newErrors = { title: '', description: '', suspect_phone: '' };
+    const newErrors = { title: '', description: '', suspect_phone: '', reporter_phone: '' };
 
     if (!form.title.trim()) { newErrors.title = 'Title is required'; valid = false; }
     if (!form.description.trim()) { newErrors.description = 'Description is required'; valid = false; }
     
     if (form.suspect_phone && !/^\+[1-9][0-9]{7,14}$/.test(form.suspect_phone)) {
       newErrors.suspect_phone = 'Invalid E.164 format (e.g. +919876543210)';
+      valid = false;
+    }
+    if (form.reporter_phone && !/^\+[1-9][0-9]{7,14}$/.test(form.reporter_phone)) {
+      newErrors.reporter_phone = 'Invalid E.164 format (e.g. +919876543210)';
       valid = false;
     }
 
@@ -177,6 +186,62 @@ function StepDetails({ form, setForm, onBack, onNext }: StepProps) {
         {errors.suspect_phone && <p className="text-red-500 text-sm mt-1">{errors.suspect_phone}</p>}
       </div>
 
+      {/* ── Suspect Bank Account (UPI_FRAUD only) ──────────────────── */}
+      {form.complaint_type === 'UPI_FRAUD' && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Suspect Bank / UPI Account <span className="text-xs text-gray-400">(Optional)</span>
+          </label>
+          <input
+            type="text"
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            value={form.suspect_account || ''}
+            onChange={(e) => setForm({ ...form, suspect_account: e.target.value || undefined })}
+            placeholder="e.g. 9876543210@upi or 00001234567890"
+          />
+          <p className="text-xs text-gray-400 mt-1">Enter the UPI ID or bank account number used by the fraudster</p>
+        </div>
+      )}
+
+      {/* ── Reporter Contact Details ──────────────────────────────── */}
+      <div className="border-t pt-4">
+        <p className="text-sm font-semibold text-gray-700 mb-3">Your Contact Details <span className="text-xs font-normal text-gray-400">(so investigators can reach you)</span></p>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Your Name / Organisation <span className="text-xs text-gray-400">(Optional)</span></label>
+            <input
+              type="text"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              value={form.reporter_entity_name || ''}
+              onChange={(e) => setForm({ ...form, reporter_entity_name: e.target.value || undefined })}
+              placeholder="e.g. Ramesh Kumar or ABC Bank Ltd"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Your Phone Number <span className="text-xs text-gray-400">(Optional)</span></label>
+            <input
+              type="text"
+              className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${errors.reporter_phone ? 'border-red-500' : 'border-gray-300'}`}
+              value={form.reporter_phone || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                setForm({ ...form, reporter_phone: val || undefined });
+                if (val && !/^\+[1-9][0-9]{7,14}$/.test(val)) {
+                  setErrors({ ...errors, reporter_phone: 'Must be E.164 format (e.g. +919876543210)' });
+                } else {
+                  setErrors({ ...errors, reporter_phone: '' });
+                }
+              }}
+              placeholder="+919876543210"
+            />
+            {errors.reporter_phone && <p className="text-red-500 text-sm mt-1">{errors.reporter_phone}</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Incident Location ─────────────────────────────────────── */}
+      <LocationPicker form={form} setForm={setForm} />
+
       <div className="flex gap-4">
         <button type="button" onClick={onBack} className="w-1/3 bg-gray-100 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-200 transition-colors">
           Back
@@ -185,6 +250,87 @@ function StepDetails({ form, setForm, onBack, onNext }: StepProps) {
           Next Step
         </button>
       </div>
+    </div>
+  );
+}
+
+
+function LocationPicker({ form, setForm }: Pick<StepProps, 'form' | 'setForm'>) {
+  const [locStatus, setLocStatus] = React.useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      setLocStatus('error');
+      return;
+    }
+    setLocStatus('loading');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setForm({
+          ...form,
+          complaint_lat: parseFloat(pos.coords.latitude.toFixed(6)),
+          complaint_lon: parseFloat(pos.coords.longitude.toFixed(6)),
+        });
+        setLocStatus('ok');
+      },
+      () => setLocStatus('error')
+    );
+  };
+
+  const clearLocation = () => {
+    setForm({ ...form, complaint_lat: undefined, complaint_lon: undefined });
+    setLocStatus('idle');
+  };
+
+  return (
+    <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
+      <label className="block text-sm font-medium text-gray-700 mb-2">📍 Incident Location <span className="text-xs text-gray-400">(Optional — helps geo-hotspot analysis)</span></label>
+      
+      {form.complaint_lat && form.complaint_lon ? (
+        <div className="flex items-center gap-3">
+          <div className="flex-1 bg-white border border-green-300 rounded-lg p-3 text-sm text-green-700">
+            ✅ Location captured: <strong>{form.complaint_lat.toFixed(4)}, {form.complaint_lon.toFixed(4)}</strong>
+          </div>
+          <button
+            type="button"
+            onClick={clearLocation}
+            className="text-xs text-red-500 hover:text-red-700 underline whitespace-nowrap"
+          >
+            Clear
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={useMyLocation}
+            disabled={locStatus === 'loading'}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            {locStatus === 'loading' ? '⏳ Getting location...' : '📍 Use My Current Location'}
+          </button>
+          <span className="text-xs text-gray-400">or enter manually:</span>
+          <input
+            type="number"
+            step="0.000001"
+            placeholder="Lat"
+            className="w-24 p-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+            value={form.complaint_lat ?? ''}
+            onChange={(e) => setForm({ ...form, complaint_lat: e.target.value ? parseFloat(e.target.value) : undefined })}
+          />
+          <input
+            type="number"
+            step="0.000001"
+            placeholder="Lon"
+            className="w-24 p-2 border border-gray-300 rounded-lg text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+            value={form.complaint_lon ?? ''}
+            onChange={(e) => setForm({ ...form, complaint_lon: e.target.value ? parseFloat(e.target.value) : undefined })}
+          />
+        </div>
+      )}
+      {locStatus === 'error' && (
+        <p className="text-red-500 text-xs mt-2">Could not get your location. Please allow location access or enter manually.</p>
+      )}
     </div>
   );
 }
@@ -232,6 +378,30 @@ function StepReview({ form, setForm, onBack, onSubmit, isLoading, error }: StepP
           <div>
             <span className="font-semibold block text-gray-500">Suspect Phone</span>
             <span>{form.suspect_phone}</span>
+          </div>
+        )}
+        {form.suspect_account && (
+          <div>
+            <span className="font-semibold block text-gray-500">Suspect Bank / UPI Account</span>
+            <span>{form.suspect_account}</span>
+          </div>
+        )}
+        {form.reporter_entity_name && (
+          <div>
+            <span className="font-semibold block text-gray-500">Your Name / Organisation</span>
+            <span>{form.reporter_entity_name}</span>
+          </div>
+        )}
+        {form.reporter_phone && (
+          <div>
+            <span className="font-semibold block text-gray-500">Your Contact Phone</span>
+            <span>{form.reporter_phone}</span>
+          </div>
+        )}
+        {form.complaint_lat && form.complaint_lon && (
+          <div>
+            <span className="font-semibold block text-gray-500">📍 Incident Location</span>
+            <span className="text-green-700">{form.complaint_lat.toFixed(5)}, {form.complaint_lon.toFixed(5)}</span>
           </div>
         )}
       </div>

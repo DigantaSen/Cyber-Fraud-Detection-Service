@@ -4,7 +4,7 @@ import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('citizen1@example.com');
+  const [email, setEmail] = useState('investigator.test@fraud.gov.in');
   const [password, setPassword] = useState('Password123');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');

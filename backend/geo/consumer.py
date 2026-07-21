@@ -14,7 +14,11 @@ async def process_message(db_pool, msg, producer):
         value = json.loads(msg.value().decode('utf-8'))
         data = value.get('data', value)
         
-        if topic in ["Case.Created", "CounterfeitScan.Submitted"]:
+        status = data.get("status") or data.get("verdictStatus") or data.get("newState") or data.get("newStatus")
+        decision = data.get("decision")
+        is_confirmed = status in ["Action_Taken", "CONFIRMED_FRAUD"] or decision == "APPROVE" or topic == "CounterfeitScan.Submitted"
+        
+        if topic in ["case.updated", "prediction.overridden", "case.created"] and is_confirmed:
             case_id = data.get("caseId")
             jurisdiction = data.get("jurisdictionId", "UNKNOWN")
             lat = data.get("complaintLat")
@@ -80,7 +84,7 @@ async def consume():
     consumer = Consumer(conf)
     producer = Producer(producer_conf)
     
-    topics = ['Case.Created', 'CounterfeitScan.Submitted']
+    topics = ['case.created', 'case.updated', 'prediction.overridden']
     consumer.subscribe(topics)
     
     logger.info(f"Subscribed to {topics}")

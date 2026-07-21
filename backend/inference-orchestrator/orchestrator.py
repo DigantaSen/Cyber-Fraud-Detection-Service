@@ -135,7 +135,7 @@ def select_active_models(
     # Evidence-based activation:
     # counterfeit-cv: only for COUNTERFEIT_CURRENCY with image evidence
     has_image = any(r.mime_type.startswith("image/") for r in evidence_refs)
-    if complaint_type != "COUNTERFEIT_CURRENCY" or not has_image:
+    if not has_image:
         active.discard("counterfeit-cv")
 
     # audio-analyzer: only if audio evidence present
@@ -211,15 +211,16 @@ async def analyze(request: AnalyzeRequest, http_client: httpx.AsyncClient) -> Fu
     # before the parallel model fan-out.
     image_content: Optional[tuple[str, str]] = None
     audio_content: Optional[tuple[str, str]] = None
+
     if "counterfeit-cv" in active_models:
-        image_ref = EvidenceRef(evidence_id=image_content[0] if image_content else "", mime_type="image/png")
-        image_content = await fetch_evidence_content(http_client, image_ref.evidence_id, "image/")
+        img_ref = next((r for r in request.evidence_refs if r.mime_type.startswith("image/")), None)
+        if img_ref and img_ref.evidence_id:
+            image_content = await fetch_evidence_content(http_client, img_ref.evidence_id, "image/")
+
     if "audio-analyzer" in active_models:
-        audio_ref = EvidenceRef(
-            evidence_id=audio_content[0] if audio_content else "",
-            mime_type=audio_content[1] if audio_content else "audio/wav",
-        )
-        audio_content = await fetch_evidence_content(http_client, audio_ref.evidence_id, "audio/")
+        aud_ref = next((r for r in request.evidence_refs if r.mime_type.startswith("audio/")), None)
+        if aud_ref and aud_ref.evidence_id:
+            audio_content = await fetch_evidence_content(http_client, aud_ref.evidence_id, "audio/")
 
     # Step 4: Build coroutines for all active models
     tasks: Dict[str, asyncio.Task] = {}
@@ -253,25 +254,23 @@ async def analyze(request: AnalyzeRequest, http_client: httpx.AsyncClient) -> Fu
         ))
 
     # counterfeit: evidence_refs were already validated in select_active_models
-    if "counterfeit-cv" in active_models:
-        image_ref = next(r for r in request.evidence_refs if r.mime_type.startswith("image/"))
+    if "counterfeit-cv" in active_models and image_content:
         tasks["counterfeit-cv"] = asyncio.create_task(run_with_timeout(
             call_counterfeit(
                 http_client,
-                image_ref.evidence_id,  # placeholder — real impl fetches from MinIO
+                image_content[0],       # base64 image payload fetched from MinIO
                 500,                    # denomination default
                 case_id_str, corr_id_str,
                 sync_mode=request.sync,
             )
         ))
 
-    if "audio-analyzer" in active_models:
-        audio_ref = next(r for r in request.evidence_refs if r.mime_type.startswith("audio/"))
+    if "audio-analyzer" in active_models and audio_content:
         tasks["audio-analyzer"] = asyncio.create_task(run_with_timeout(
             call_audio_analyzer(
                 http_client,
-                audio_ref.evidence_id,  # placeholder — real impl fetches from MinIO
-                audio_ref.mime_type,
+                audio_content[0],       # base64 audio payload fetched from MinIO
+                audio_content[1],
                 0.0,
                 case_id_str, corr_id_str,
                 sync_mode=request.sync,
@@ -303,11 +302,15 @@ async def analyze(request: AnalyzeRequest, http_client: httpx.AsyncClient) -> Fu
     # Step 7: Re-normalize weights + compute fused score
     norm_weights = renormalize_weights(config.weights, responding)
 
-    fused_score = sum(
+    base_fused_score = sum(
         raw_results[m]["score"] * norm_weights.get(m, 0)
         for m in responding
         if "score" in raw_results[m]
     )
+    # Evidence Corroboration Signal: Each attached verified evidence item adds corroborative weight (+3.5 points)
+    evidence_count = len(request.evidence_refs)
+    evidence_boost = min(15.0, evidence_count * 3.5) if evidence_count > 0 else 0.0
+    fused_score = min(100.0, base_fused_score + evidence_boost)
     # Confidence = weighted average of per-model confidence
     confidence = sum(
         raw_results[m].get("confidence", 0.5) * norm_weights.get(m, 0)
@@ -376,6 +379,8 @@ async def analyze(request: AnalyzeRequest, http_client: httpx.AsyncClient) -> Fu
         fusion_weights=norm_weights,
         pending_review=pending_review,
         correlation_id=request.correlation_id,
+        # Pass suspect phone so graph-consumer updates fraudScore on Neo4j node
+        entity_id=request.complaint.suspect_phone or request.complaint.suspect_account,
     )
 
     return FusedVerdict(

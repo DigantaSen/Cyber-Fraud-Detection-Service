@@ -91,7 +91,7 @@ export default function CaseStatusPage() {
         </div>
 
         {/* Evidence Upload */}
-        <EvidenceUpload caseId={caseId!} complaintType={caseData?.complaintType || caseData?.complaint_type} />
+        <EvidenceUpload caseId={caseId!} complaintType={caseData?.complaintType || caseData?.complaint_type} caseStatus={caseData?.status} />
 
         {/* Evidence List */}
         <EvidenceList caseId={caseId!} />

@@ -44,6 +44,9 @@ class Outbox(Base):
     __table_args__ = {'schema': 'platform'}
 
     outbox_id = Column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    aggregate_type = Column(String(64), nullable=False)
+    aggregate_id = Column(UUID(as_uuid=True), nullable=False)
+    event_type = Column(String(128), nullable=False)
     topic = Column(String(128), nullable=False)
     event_key = Column(String, nullable=False)
     payload = Column(JSON, nullable=False)
@@ -51,3 +54,4 @@ class Outbox(Base):
     attempts = Column(BigInteger, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     published_at = Column(DateTime(timezone=True))
+    correlation_id = Column(UUID(as_uuid=True), nullable=True)

@@ -79,6 +79,7 @@ class PredictionPublisher:
         fusion_weights: Dict[str, float],
         pending_review: bool,
         correlation_id: Optional[uuid.UUID],
+        entity_id: Optional[str] = None,
     ) -> None:
         """
         Publishes to prediction.completed topic.
@@ -99,6 +100,9 @@ class PredictionPublisher:
             "fusionTimestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "pendingReview": pending_review,
             "correlationId": str(correlation_id) if correlation_id else None,
+            # entityId allows graph-consumer to update fraudScore on the Neo4j Phone node
+            "entityId": entity_id,
+            "fraudScore": round(fused_score, 2),
         }
         self._publish(settings.TOPIC_PREDICTION_COMPLETED, str(case_id), event)
 

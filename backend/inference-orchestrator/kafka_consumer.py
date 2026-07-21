@@ -94,9 +94,7 @@ async def _handle_evidence_uploaded(payload: dict, http_client) -> None:
     the audio or counterfeit models and would produce an identical verdict.
     """
     mime_type = payload.get("mimeType", "")
-    if not (mime_type.startswith("audio/") or mime_type.startswith("image/")):
-        logger.debug(f"evidence.uploaded: mimeType={mime_type} — no model re-trigger needed, skipping")
-        return
+    logger.info(f"evidence.uploaded: mimeType={mime_type} — starting AI re-analysis for case {payload.get('caseId')}")
 
     case_id_raw = payload.get("caseId")
     if not case_id_raw:
@@ -110,13 +108,33 @@ async def _handle_evidence_uploaded(payload: dict, http_client) -> None:
     corr_raw = payload.get("correlationId")
     correlation_id = uuid.UUID(corr_raw) if corr_raw else None
 
+    complaint_type = "OTHER"
+    title = ""
+    description = ""
+    suspect_phone = None
+    suspect_account = None
+
+    try:
+        from database import db
+        cdata = await db.fetch_case_details(case_id)
+        if cdata:
+            complaint_type = cdata.get("complaint_type", "OTHER")
+            title = cdata.get("title", "")
+            description = cdata.get("description", "")
+            suspect_phone = cdata.get("suspect_phone")
+            suspect_account = cdata.get("suspect_account")
+    except Exception as e:
+        logger.warning(f"Could not fetch case details for {case_id_raw} during evidence re-trigger: {e}")
+
     request = AnalyzeRequest(
         case_id=case_id,
         trigger_type="EVIDENCE_UPLOADED",
         complaint=ComplaintPayload(
-            title=payload.get("title", ""),
-            description=payload.get("description", ""),
-            complaint_type=payload.get("complaintType", "OTHER"),
+            title=title,
+            description=description,
+            complaint_type=complaint_type,
+            suspect_phone=suspect_phone,
+            suspect_account=suspect_account,
             language_code=payload.get("languageCode", "en"),
         ),
         evidence_refs=[

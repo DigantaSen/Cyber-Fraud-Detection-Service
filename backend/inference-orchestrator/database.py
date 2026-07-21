@@ -187,6 +187,19 @@ class Database:
             )
         return dict(row) if row else None
 
+    async def fetch_case_details(self, case_id: uuid.UUID) -> Optional[Dict[str, Any]]:
+        """Fetch title, description, complaint_type, suspect_phone, suspect_account from investigation.cases."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT title, description, complaint_type, suspect_phone, suspect_account, language_code
+                FROM investigation.cases
+                WHERE case_id = $1
+                """,
+                case_id,
+            )
+        return dict(row) if row else None
+
     async def ping(self) -> bool:
         """Health check — returns True if DB is reachable."""
         try:

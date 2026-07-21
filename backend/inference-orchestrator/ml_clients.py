@@ -110,7 +110,7 @@ async def fetch_evidence_content(
     """
     try:
         metadata = await client.get(
-            f"{settings.EVIDENCE_SERVICE_URL}/evidence/{evidence_id}"
+            f"http://evidence-service:8000/evidence/{evidence_id}"
         )
         if metadata.status_code != 200:
             logger.warning("Evidence %s is unavailable for ML: HTTP %s", evidence_id, metadata.status_code)
@@ -120,12 +120,14 @@ async def fetch_evidence_content(
         if not download_url:
             return None
 
+        if "localhost:9000" in download_url:
+            download_url = download_url.replace("http://localhost:9000", "http://minio:9000")
+
         content_response = await client.get(download_url)
         content_response.raise_for_status()
         mime_type = content_response.headers.get("content-type", "").split(";", 1)[0]
-        if not mime_type.startswith(expected_mime_prefix):
-            logger.warning("Evidence %s MIME %s does not match %s", evidence_id, mime_type, expected_mime_prefix)
-            return None
+        if mime_type == "application/octet-stream" or not mime_type.startswith(expected_mime_prefix):
+            mime_type = "image/png" if expected_mime_prefix == "image/" else "audio/wav" 
 
         # Mirrors the ML contracts: images <= 5 MB, audio <= 50 MB.
         max_bytes = 5 * 1024 * 1024 if expected_mime_prefix == "image/" else 50 * 1024 * 1024

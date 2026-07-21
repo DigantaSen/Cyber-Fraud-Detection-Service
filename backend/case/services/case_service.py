@@ -148,6 +148,8 @@ class CaseService:
                 "complaintType": req.complaint_type,
                 "suspectPhone": req.suspect_phone,
                 "suspectAccount": req.suspect_account,
+                "reporterPhone": req.reporter_phone,
+                "reporterEntityName": req.reporter_entity_name,
                 "complaintLat": req.complaint_lat,
                 "complaintLon": req.complaint_lon,
                 "jurisdictionId": jurisdiction_id,
@@ -270,6 +272,9 @@ class CaseService:
                 "newState": req.state,
                 "reason": req.reason,
                 "assignedTo": str(req.assigned_to) if req.assigned_to else None,
+                "complaintLat": float(case.complaint_lat) if case.complaint_lat is not None else None,
+                "complaintLon": float(case.complaint_lon) if case.complaint_lon is not None else None,
+                "jurisdictionId": case.jurisdiction_id,
             },
             correlation_id=correlation_id,
         )
@@ -397,7 +402,7 @@ class CaseService:
         if not case:
             raise CaseNotFoundError(f"Case {case_id} not found")
 
-        if case.status not in ("Pending_AI", "Action_Taken"):
+        if case.status not in ("Pending_AI", "Action_Taken", "New", "Investigating"):
             raise InvalidTransitionError(
                 f"Verdict override requires Pending_AI or Action_Taken status, got '{case.status}'"
             )
@@ -405,15 +410,33 @@ class CaseService:
         new_state = "Action_Taken" if req.decision == "APPROVE" else "Closed"
         disposition = "FALSE_POSITIVE" if req.decision == "REJECT" else None
 
+        validate_transition(case.status, new_state, caller_role="INVESTIGATOR")
+
+        pred_repo = PredictionRepository(self._db)
+        verdict = await pred_repo.latest_for_case(case_id)
+        if not verdict:
+            verdict = await pred_repo.insert(
+                case_id=case_id,
+                fused_score=0.0,
+                risk_tier="LOW",
+                confidence=0.0,
+                status="PENDING_REVIEW",
+                model_breakdown=[],
+                explanation="Initial verdict auto-generated for HITL override",
+                correlation_id=correlation_id,
+            )
+        orig_score = verdict.fused_score
+        orig_conf = verdict.confidence
+
         # APPEND-ONLY — DB trigger prevents future UPDATE/DELETE.
         override = await self._override_repo.create(
             case_id=case_id,
-            original_verdict_id=req.original_verdict_id,
+            original_verdict_id=verdict.prediction_id,
             decision=req.decision,
             justification=req.justification,
             investigator_id=investigator_id,
-            original_score=None,        # populated if fused_verdict is fetched
-            original_confidence=None,
+            original_score=orig_score,
+            original_confidence=orig_conf,
             correlation_id=correlation_id,
         )
 
@@ -437,6 +460,9 @@ class CaseService:
                 "originalVerdictId": str(req.original_verdict_id),
                 "newState": new_state,
                 "disposition": disposition,
+                "complaintLat": float(case.complaint_lat) if case.complaint_lat is not None else None,
+                "complaintLon": float(case.complaint_lon) if case.complaint_lon is not None else None,
+                "jurisdictionId": case.jurisdiction_id or "JUR-MH-001",
             },
             correlation_id=correlation_id,
         )

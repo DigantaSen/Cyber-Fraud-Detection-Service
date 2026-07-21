@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     CASE_SERVICE_URL: str = "http://case:8000"
     BOT_SERVICE_URL: str = "http://bot:8000"
-    EVIDENCE_SERVICE_URL: str = "http://evidence:8000"
+    EVIDENCE_SERVICE_URL: str = "http://evidence-service:8000"
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:5175"
 
 

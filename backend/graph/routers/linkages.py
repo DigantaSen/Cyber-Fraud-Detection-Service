@@ -144,3 +144,68 @@ async def get_shortest_path(
         "pathLength": len(path),
         "path": []
     }, correlation_id)
+
+
+@router.get("/global")
+async def get_global_graph(request: Request, limit: int = 300):
+    correlation_id = request.headers.get("X-Correlation-ID", "")
+    driver = request.app.state.neo4j_driver
+    
+    # Show ONLY confirmed fraud cases (Action_Taken) and their connected entities
+    query = f"""
+    MATCH (c:Case)
+    WHERE c.status = 'Action_Taken' OR c.isConfirmed = true
+    OPTIONAL MATCH (c)-[r]-(m:Entity)
+    RETURN c.id AS nid, labels(c) AS nlabels, c.fraudScore AS nscore,
+           type(r) AS rel_type,
+           m.id AS mid, labels(m) AS mlabels, m.fraudScore AS mscore
+    LIMIT {limit}
+    """
+    
+    nodes_map = {}
+    edges_list = []
+    seen_edges = set()
+    
+    async with driver.session() as session:
+        result = await session.run(query)
+        async for record in result:
+            nid = record.get("nid")
+            if nid:
+                labels = list(record.get("nlabels") or [])
+                ntype = [l for l in labels if l != "Entity"][0] if len(labels) > 1 else "UNKNOWN"
+                if nid not in nodes_map:
+                    nodes_map[nid] = {
+                        "id": nid,
+                        "type": ntype.upper(),
+                        "fraudScore": record.get("nscore") or 0
+                    }
+            
+            mid = record.get("mid")
+            if mid:
+                labels = list(record.get("mlabels") or [])
+                mtype = [l for l in labels if l != "Entity"][0] if len(labels) > 1 else "UNKNOWN"
+                if mid not in nodes_map:
+                    nodes_map[mid] = {
+                        "id": mid,
+                        "type": mtype.upper(),
+                        "fraudScore": record.get("mscore") or 0
+                    }
+            
+            rel_type = record.get("rel_type")
+            if nid and mid and rel_type:
+                edge_key = (nid, mid, rel_type)
+                if edge_key not in seen_edges:
+                    seen_edges.add(edge_key)
+                    edges_list.append({
+                        "from": nid,
+                        "to": mid,
+                        "relation": rel_type
+                    })
+
+    nodes_out = list(nodes_map.values())
+    return success_response({
+        "nodes": nodes_out,
+        "edges": edges_list,
+        "totalNodes": len(nodes_out),
+        "totalEdges": len(edges_list)
+    }, correlation_id)
