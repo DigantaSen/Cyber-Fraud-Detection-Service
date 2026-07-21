@@ -54,7 +54,7 @@ async def get_linkages(
     async with driver.session() as session:
         # Check if anchor exists
         result = await session.run("MATCH (anchor:Entity {id: $entityId}) RETURN anchor", entityId=entityId)
-        anchor_record = await result.first()
+        anchor_record = await result.single()
         if not anchor_record:
             from fastapi.responses import JSONResponse
             return JSONResponse(status_code=404, content=error_response("ENTITY_NOT_FOUND", "Entity not found in graph", correlation_id))
@@ -63,7 +63,7 @@ async def get_linkages(
         
         # Execute linkage query
         result = await session.run(query, entityId=entityId)
-        record = await result.first()
+        record = await result.single()
 
     anchor_labels = list(anchor_node.labels)
     anchor_type = [l for l in anchor_labels if l != "Entity"][0] if len(anchor_labels) > 1 else "UNKNOWN"
@@ -131,7 +131,7 @@ async def get_shortest_path(
     
     async with driver.session() as session:
         result = await session.run(query, from_id=from_id, to_id=to_id)
-        record = await result.first()
+        record = await result.single()
         
         if not record:
             return error_response("NO_PATH_FOUND", "No path found between entities", correlation_id)

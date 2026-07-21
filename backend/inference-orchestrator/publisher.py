@@ -7,6 +7,7 @@ Uses kafka-python-ng with acks=all + idempotent producer for exactly-once semant
 Payload matches ml-contract.md §Fusion Contract exactly.
 """
 
+import asyncio
 import json
 import logging
 import uuid
@@ -44,11 +45,23 @@ class PredictionPublisher:
             logger.info("Kafka producer closed")
 
     async def ping(self) -> bool:
-        """Check if connected to Kafka"""
+        """Verify Kafka can serve metadata for the output topic.
+
+        ``bootstrap_connected()`` only describes the initial bootstrap socket.
+        kafka-python closes that socket after discovering a broker, so using it
+        made readiness report Kafka as down while publishing still worked.
+        """
         if not self._producer:
             return False
         try:
-            return self._producer.bootstrap_connected()
+            partitions = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self._producer.partitions_for,
+                    settings.TOPIC_PREDICTION_COMPLETED,
+                ),
+                timeout=5,
+            )
+            return bool(partitions)
         except Exception as e:
             logger.error(f"Kafka ping failed: {e}")
             return False

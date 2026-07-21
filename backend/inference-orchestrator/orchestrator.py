@@ -43,6 +43,7 @@ from ml_clients import (
     call_counterfeit,
     call_graph_analyzer,
     call_scam_nlp,
+    fetch_evidence_content,
     fetch_graph_linkages,
 )
 from publisher import publisher
@@ -205,6 +206,20 @@ async def analyze(request: AnalyzeRequest, http_client: httpx.AsyncClient) -> Fu
     anchor = request.complaint.suspect_phone or request.complaint.suspect_account
     if not request.sync and anchor and "graph-analyzer" in active_models:
         graph_data = await fetch_graph_linkages(http_client, anchor)
+
+    # Evidence IDs are references, not model payloads. Resolve verified bytes
+    # before the parallel model fan-out.
+    image_content: Optional[tuple[str, str]] = None
+    audio_content: Optional[tuple[str, str]] = None
+    if "counterfeit-cv" in active_models:
+        image_ref = EvidenceRef(evidence_id=image_content[0] if image_content else "", mime_type="image/png")
+        image_content = await fetch_evidence_content(http_client, image_ref.evidence_id, "image/")
+    if "audio-analyzer" in active_models:
+        audio_ref = EvidenceRef(
+            evidence_id=audio_content[0] if audio_content else "",
+            mime_type=audio_content[1] if audio_content else "audio/wav",
+        )
+        audio_content = await fetch_evidence_content(http_client, audio_ref.evidence_id, "audio/")
 
     # Step 4: Build coroutines for all active models
     tasks: Dict[str, asyncio.Task] = {}

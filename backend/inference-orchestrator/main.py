@@ -1,7 +1,7 @@
 """
 Inference Orchestrator — FastAPI Application (T8)
 
-Port: 8000 (internal) | Exposed: 8008 (host) via docker-compose
+Port: 8000 (internal) | Exposed: 8014 (host) via docker-compose
 Internal only — NOT routed through Kong. Called by:
   - Case Service (via Kafka consumer in this pod, Mode A)
   - Event Processing Service POST /inference/analyze sync=True (Mode B, T15)
@@ -209,20 +209,35 @@ def _verdict_to_dict(v) -> dict:
 
 
 def _db_row_to_dict(row: dict) -> dict:
-    """Convert asyncpg row (UUID/datetime types) to JSON-safe dict."""
+    """Convert a stored verdict into the public, camelCase API contract."""
     import json as _json
+
+    field_names = {
+        "prediction_id": "predictionId",
+        "case_id": "caseId",
+        "trigger_type": "triggerType",
+        "requested_at": "requestedAt",
+        "fused_score": "fusedScore",
+        "risk_tier": "riskTier",
+        "model_breakdown": "modelBreakdown",
+        "fusion_weights": "fusionWeights",
+        "pending_review": "pendingReview",
+        "fusion_timestamp": "fusionTimestamp",
+        "correlation_id": "correlationId",
+    }
     result = {}
     for k, v in row.items():
+        public_name = field_names.get(k, k)
         if isinstance(v, uuid.UUID):
-            result[k] = str(v)
+            result[public_name] = str(v)
         elif isinstance(v, datetime):
-            result[k] = v.isoformat().replace("+00:00", "Z")
+            result[public_name] = v.isoformat().replace("+00:00", "Z")
         elif isinstance(v, (str, int, float, bool, type(None))):
-            result[k] = v
+            result[public_name] = v
         else:
-            result[k] = str(v)
+            result[public_name] = str(v)
     # Deserialize JSONB fields
-    for jsonb_field in ("model_breakdown", "fusion_weights"):
+    for jsonb_field in ("modelBreakdown", "fusionWeights"):
         if jsonb_field in result and isinstance(result[jsonb_field], str):
             try:
                 result[jsonb_field] = _json.loads(result[jsonb_field])

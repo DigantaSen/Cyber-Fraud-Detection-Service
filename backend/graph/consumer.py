@@ -15,7 +15,7 @@ async def process_message(driver, msg, producer):
         data = value.get('data', value)
         
         async with driver.session() as session:
-            if topic == "Case.Created":
+            if topic == "case.created":
                 case_id = data.get("caseId")
                 risk_tier = data.get("riskTier", "UNKNOWN")
                 suspect_phone = data.get("suspectPhone")
@@ -28,7 +28,7 @@ async def process_message(driver, msg, producer):
                     MERGE (b)-[r:LINKED_TO]->(a)
                     """, suspectPhone=suspect_phone, caseId=case_id, riskTier=risk_tier)
                     
-            elif topic == "TelecomEvent.Ingested":
+            elif topic == "telecom.event.ingested":
                 caller = data.get("caller")
                 receiver = data.get("receiver")
                 
@@ -41,7 +41,7 @@ async def process_message(driver, msg, producer):
                     ON MATCH SET r.count = r.count + 1
                     """, caller=caller, receiver=receiver)
                     
-            elif topic == "Transaction.Ingested":
+            elif topic == "transaction.ingested":
                 source = data.get("sourceAccount")
                 dest = data.get("destinationAccount")
                 amount = data.get("amount", 0)
@@ -55,7 +55,7 @@ async def process_message(driver, msg, producer):
                     ON MATCH SET r.count = r.count + 1, r.amountTotalINR = r.amountTotalINR + $amount
                     """, source=source, dest=dest, amount=amount)
                     
-            elif topic == "Prediction.Completed":
+            elif topic == "prediction.completed":
                 entity_id = data.get("entityId")
                 fraud_score = data.get("fraudScore")
                 
@@ -87,7 +87,7 @@ async def consume():
     consumer = Consumer(conf)
     producer = Producer(producer_conf)
     
-    topics = ['Case.Created', 'Prediction.Completed', 'TelecomEvent.Ingested', 'Transaction.Ingested']
+    topics = ['case.created', 'prediction.completed', 'telecom.event.ingested', 'transaction.ingested']
     consumer.subscribe(topics)
     
     logger.info(f"Subscribed to {topics}")

@@ -36,6 +36,9 @@ bcrypt==3.2.2
 passlib[bcrypt]==1.7.4
 pyotp==2.9.0
 
+# Fix for Python 3.12: pkg_resources is no longer bundled
+setuptools==69.5.1
+
 # Testing
 pytest==8.2.1
 pytest-asyncio==0.23.7

@@ -22,6 +22,7 @@ Shared httpx.AsyncClient:
 """
 
 import asyncio
+import base64
 import logging
 from typing import Any, Dict, Optional
 
@@ -87,10 +88,53 @@ async def fetch_graph_linkages(
     """
     try:
         url = f"{settings.GRAPH_SERVICE_URL}/graph/linkages"
-        resp = await client.get(url, params={"entityId": anchor, "depth": depth})
+        resp = await client.get(url, params={"entityId": anchor, "hops": depth})
         if resp.status_code == 200:
             return resp.json().get("data", {})
         logger.warning(f"Graph service returned {resp.status_code} for anchor={anchor} — proceeding without graph")
+        return None
+    except Exception as exc:
+        logger.warning("Graph service unreachable for anchor=%s: %s", anchor, exc)
+        return None
+
+
+async def fetch_evidence_content(
+    client: httpx.AsyncClient,
+    evidence_id: str,
+    expected_mime_prefix: str,
+) -> Optional[tuple[str, str]]:
+    """Return verified evidence as ``(base64, mimeType)`` for ML inference.
+
+    Evidence is fetched through the Evidence Service's short-lived download URL;
+    opaque evidence IDs must never be sent to a model as though they were bytes.
+    """
+    try:
+        metadata = await client.get(
+            f"{settings.EVIDENCE_SERVICE_URL}/evidence/{evidence_id}"
+        )
+        if metadata.status_code != 200:
+            logger.warning("Evidence %s is unavailable for ML: HTTP %s", evidence_id, metadata.status_code)
+            return None
+        body = metadata.json()
+        download_url = body.get("downloadUrl")
+        if not download_url:
+            return None
+
+        content_response = await client.get(download_url)
+        content_response.raise_for_status()
+        mime_type = content_response.headers.get("content-type", "").split(";", 1)[0]
+        if not mime_type.startswith(expected_mime_prefix):
+            logger.warning("Evidence %s MIME %s does not match %s", evidence_id, mime_type, expected_mime_prefix)
+            return None
+
+        # Mirrors the ML contracts: images <= 5 MB, audio <= 50 MB.
+        max_bytes = 5 * 1024 * 1024 if expected_mime_prefix == "image/" else 50 * 1024 * 1024
+        if len(content_response.content) > max_bytes:
+            logger.warning("Evidence %s exceeds the ML size limit", evidence_id)
+            return None
+        return base64.b64encode(content_response.content).decode("ascii"), mime_type
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("Could not fetch evidence %s for ML: %s", evidence_id, exc)
         return None
     except Exception as e:
         logger.warning(f"Graph service unreachable for anchor={anchor}: {e} — proceeding without graph")
