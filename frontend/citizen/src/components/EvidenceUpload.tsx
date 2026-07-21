@@ -133,7 +133,9 @@ export default function EvidenceUpload({ caseId, complaintType }: EvidenceUpload
 
       const confirmation = await confirmUpload.mutateAsync({
         evidenceId,
-        clientSha256,
+        payload: {
+          clientSha256,
+        },
       });
 
       // ── Step 5: Done — invalidate the Case and Evidence queries
