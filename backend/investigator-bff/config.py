@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     SEARCH_SERVICE_URL: str = "http://search:8000"
     GEO_SERVICE_URL: str = "http://geo:8000"
     GRAPH_SERVICE_URL: str = "http://graph:8000"
-    EVIDENCE_SERVICE_URL: str = "http://evidence:8000"
-    REPORTING_SERVICE_URL: str = "http://reporting:8000"
+    EVIDENCE_SERVICE_URL: str = "http://evidence-service:8000"
+    REPORTING_SERVICE_URL: str = "http://reporting-service:8000"
     NOTIFICATION_SERVICE_URL: str = "http://notification:8000"
 
     # ── Observability ──────────────────────────────────────────

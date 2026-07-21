@@ -21,7 +21,13 @@ export default function VerdictDisplay({ prediction }: VerdictDisplayProps) {
     );
   }
 
-  const { fusedScore, riskTier, confidence, explanation, modelBreakdown } = prediction;
+  const rawScore = prediction.fusedScore ?? (prediction as any).fused_score ?? 0;
+  const fusedScore = typeof rawScore === 'string' ? parseFloat(rawScore) : Number(rawScore);
+  const riskTier = (prediction.riskTier ?? (prediction as any).risk_tier ?? 'LOW').toUpperCase() as any;
+  const rawConf = prediction.confidence ?? (prediction as any).confidence ?? 0;
+  const confidence = typeof rawConf === 'string' ? parseFloat(rawConf) : Number(rawConf);
+  const explanation = prediction.explanation ?? '';
+  const modelBreakdown = prediction.modelBreakdown ?? (prediction as any).model_breakdown ?? [];
 
   // Color for the gauge needle
   const gaugeColor =
@@ -48,7 +54,7 @@ export default function VerdictDisplay({ prediction }: VerdictDisplayProps) {
             />
             {/* Score text */}
             <text x="100" y="95" textAnchor="middle" className="fill-gray-900 text-3xl font-bold" fontSize="32" fontWeight="bold" fill="#111827">
-              {Math.round(fusedScore)}
+              {fusedScore.toFixed(1)}
             </text>
           </svg>
         </div>

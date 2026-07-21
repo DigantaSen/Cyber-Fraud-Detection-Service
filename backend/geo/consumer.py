@@ -1,3 +1,4 @@
+import uuid
 import asyncio
 import json
 import logging
@@ -14,13 +15,27 @@ async def process_message(db_pool, msg, producer):
         value = json.loads(msg.value().decode('utf-8'))
         data = value.get('data', value)
         
-        if topic in ["Case.Created", "CounterfeitScan.Submitted"]:
+        status = data.get("status") or data.get("verdictStatus") or data.get("newState") or data.get("newStatus")
+        decision = data.get("decision")
+        is_confirmed = status in ["Action_Taken", "CONFIRMED_FRAUD"] or decision == "APPROVE" or topic == "CounterfeitScan.Submitted"
+        
+        if topic in ["case.updated", "prediction.overridden", "case.created"] and is_confirmed:
             case_id = data.get("caseId")
             jurisdiction = data.get("jurisdictionId", "UNKNOWN")
             lat = data.get("complaintLat")
             lon = data.get("complaintLon")
             risk_tier = data.get("riskTier", "LOW")
             
+            if case_id:
+                if lat is None or lon is None:
+                    async with db_pool.acquire() as conn:
+                        row = await conn.fetchrow("SELECT complaint_lat, complaint_lon, jurisdiction_id FROM investigation.cases WHERE case_id = $1::uuid", uuid.UUID(case_id))
+                        if row:
+                            lat = float(row["complaint_lat"]) if row["complaint_lat"] is not None else None
+                            lon = float(row["complaint_lon"]) if row["complaint_lon"] is not None else None
+                            if row["jurisdiction_id"]:
+                                jurisdiction = row["jurisdiction_id"]
+
             if case_id and lat is not None and lon is not None:
                 # Truncate location to some precision to cluster nearby incidents
                 # or just use lat,lon hash. The contract says location_hash.
@@ -80,7 +95,7 @@ async def consume():
     consumer = Consumer(conf)
     producer = Producer(producer_conf)
     
-    topics = ['Case.Created', 'CounterfeitScan.Submitted']
+    topics = ['case.created', 'case.updated', 'prediction.overridden']
     consumer.subscribe(topics)
     
     logger.info(f"Subscribed to {topics}")

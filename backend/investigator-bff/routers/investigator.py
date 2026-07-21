@@ -91,29 +91,45 @@ async def get_case_detail(
     case_data = case_result.get("data", {})
     
     suspect_phone = case_data.get("suspectPhone", "")
-    complaint_lat = case_data.get("complaintLat")
-    complaint_lon = case_data.get("complaintLon")
+    # complaintLat/Lon may be serialized as Decimal strings — always cast to float
+    _lat = case_data.get("complaintLat")
+    _lon = case_data.get("complaintLon")
+    complaint_lat = float(_lat) if _lat is not None else None
+    complaint_lon = float(_lon) if _lon is not None else None
     
     graph_coro = None
-    if suspect_phone:
-        graph_coro = _proxy(graph_client, "GET", "/api/v1/graph/linkages", params={"entityId": suspect_phone, "hops": 2}, headers=headers)
+    anchor_id = suspect_phone or case_id
+    if anchor_id:
+        graph_coro = _proxy(graph_client, "GET", "/api/v1/graph/linkages", params={"entityId": anchor_id, "hops": 2}, headers=headers)
         
     geo_coro = None
     if complaint_lat is not None and complaint_lon is not None:
         bbox = f"{complaint_lon-0.05},{complaint_lat-0.05},{complaint_lon+0.05},{complaint_lat+0.05}"
         geo_coro = _proxy(geo_client, "GET", "/api/v1/geo/hotspots", params={"bbox": bbox}, headers=headers)
         
-    evidence_coro = _proxy(evidence_client, "GET", f"/api/v1/evidence/{case_id}", headers=headers)
-    
+    # Evidence: use correct path and catch failures so they don't break the whole route
+    async def _fetch_evidence():
+        try:
+            r = await evidence_client.get(f"/cases/{case_id}/evidence", headers=headers)
+            if r.status_code == 200:
+                raw = r.json()
+                # Evidence service returns plain list []
+                return raw if isinstance(raw, list) else raw.get("data", [])
+        except Exception:
+            pass
+        return []
+
+    evidence_coro = _fetch_evidence()
+
     coros = [evidence_coro]
     if graph_coro:
         coros.append(graph_coro)
     if geo_coro:
         coros.append(geo_coro)
-        
+
     results = await asyncio.gather(*coros, return_exceptions=True)
-    
-    evidence_list = results[0].get("data", []) if not isinstance(results[0], Exception) and isinstance(results[0], dict) else []
+
+    evidence_list = results[0] if isinstance(results[0], list) else []
     
     idx = 1
     graph_data = {}
@@ -133,6 +149,19 @@ async def get_case_detail(
         "evidence": evidence_list,
         "timeline": case_data.get("timeline", [])
     }, _corr(request))
+
+@router.patch("/cases/{case_id}/state")
+@router.post("/cases/{case_id}/state")
+async def update_case_state(
+    request: Request,
+    case_id: str,
+    current_user=Depends(require_role("INVESTIGATOR", "ADMIN")),
+    case_client: httpx.AsyncClient = Depends(get_case_client),
+):
+    headers = _forward_headers(request, current_user)
+    body = await request.body()
+    headers["Content-Type"] = request.headers.get("Content-Type", "application/json")
+    return await _proxy(case_client, "PATCH", f"/api/v1/cases/{case_id}/state", content=body, headers=headers)
 
 @router.post("/cases/{case_id}/override")
 async def override_verdict(
@@ -175,11 +204,10 @@ async def get_case_graph(
 ):
     headers = _forward_headers(request, current_user)
     case_result = await _proxy(case_client, "GET", f"/api/v1/cases/{case_id}", headers=headers)
-    case_data = case_result.get("data", {})
-    suspect_phone = case_data.get("suspectPhone")
-    if suspect_phone:
-        return await _proxy(graph_client, "GET", "/api/v1/graph/linkages", params={"entityId": suspect_phone, "hops": 2}, headers=headers)
-    return success_response({}, _corr(request))
+    raw_data = case_result.get("data", {})
+    case_data = raw_data.get("case", raw_data) if isinstance(raw_data, dict) else {}
+    entity_id = case_data.get("suspectPhone") or case_data.get("suspect_phone") or case_data.get("suspectAccount") or case_data.get("suspect_account") or case_id
+    return await _proxy(graph_client, "GET", "/api/v1/graph/linkages", params={"entityId": entity_id, "hops": 2}, headers=headers)
 
 @router.post("/cases/{case_id}/evidence")
 async def upload_evidence(
@@ -192,7 +220,7 @@ async def upload_evidence(
     body = await request.body()
     content_type = request.headers.get("Content-Type", "application/json")
     headers["Content-Type"] = content_type
-    return await _proxy(evidence_client, "POST", f"/api/v1/evidence/{case_id}", content=body, headers=headers)
+    return await _proxy(evidence_client, "POST", f"/cases/{case_id}/evidence", content=body, headers=headers)
 
 @router.post("/reports/intelligence-package")
 async def generate_intelligence_package(
@@ -204,7 +232,7 @@ async def generate_intelligence_package(
     body = await request.body()
     content_type = request.headers.get("Content-Type", "application/json")
     headers["Content-Type"] = content_type
-    return await _proxy(reporting_client, "POST", "/api/v1/reports/intelligence-package", content=body, headers=headers)
+    return await _proxy(reporting_client, "POST", "/reports/intelligence-package", content=body, headers=headers)
 
 @router.get("/stream")
 async def stream_events(
@@ -214,3 +242,64 @@ async def stream_events(
 ):
     headers = _forward_headers(request, current_user)
     return await _proxy_raw(notification_client, "GET", "/api/v1/notify/stream", headers=headers)
+
+
+@router.patch("/cases/{case_id}/state")
+async def update_case_state(
+    request: Request,
+    case_id: str,
+    current_user=Depends(require_role("INVESTIGATOR", "ADMIN")),
+    case_client: httpx.AsyncClient = Depends(get_case_client),
+):
+    headers = _forward_headers(request, current_user)
+    body = await request.body()
+    content_type = request.headers.get("Content-Type", "application/json")
+    headers["Content-Type"] = content_type
+    return await _proxy(case_client, "PATCH", f"/api/v1/cases/{case_id}/state", content=body, headers=headers)
+
+
+@router.get("/graph/global")
+async def get_global_syndicate_graph(
+    request: Request,
+    current_user=Depends(require_role("INVESTIGATOR", "ADMIN")),
+    graph_client: httpx.AsyncClient = Depends(get_graph_client),
+):
+    headers = _forward_headers(request, current_user)
+    return await _proxy(graph_client, "GET", "/api/v1/graph/global", headers=headers)
+
+
+@router.get("/cases/{case_id}/evidence")
+async def get_case_evidence_list(
+    request: Request,
+    case_id: str,
+    current_user=Depends(require_role("INVESTIGATOR", "ADMIN")),
+    evidence_client: httpx.AsyncClient = Depends(get_evidence_client),
+):
+    headers = _forward_headers(request, current_user)
+    result = await _proxy(evidence_client, "GET", f"/cases/{case_id}/evidence", headers=headers)
+    if isinstance(result, list):
+        return success_response(result, _corr(request))
+    return result
+
+@router.get("/evidence/{evidence_id}")
+async def get_evidence_download(
+    request: Request,
+    evidence_id: str,
+    current_user=Depends(require_role("INVESTIGATOR", "ADMIN")),
+    evidence_client: httpx.AsyncClient = Depends(get_evidence_client),
+):
+    headers = _forward_headers(request, current_user)
+    return await _proxy(evidence_client, "GET", f"/evidence/{evidence_id}", headers=headers)
+
+@router.post("/evidence/{evidence_id}/confirm")
+async def confirm_investigator_evidence(
+    request: Request,
+    evidence_id: str,
+    current_user=Depends(require_role("INVESTIGATOR", "ADMIN")),
+    evidence_client: httpx.AsyncClient = Depends(get_evidence_client),
+):
+    headers = _forward_headers(request, current_user)
+    body = await request.body()
+    content_type = request.headers.get("Content-Type", "application/json")
+    headers["Content-Type"] = content_type
+    return await _proxy(evidence_client, "POST", f"/evidence/{evidence_id}/confirm", content=body, headers=headers)

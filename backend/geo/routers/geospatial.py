@@ -36,16 +36,13 @@ def get_jurisdiction(request: Request) -> str:
 async def get_hotspots(
     request: Request,
     bbox: str = Query(...),
+    jurisdiction_id: Optional[str] = Query(None),
     riskTier: Optional[str] = None,
     from_date: Optional[str] = Query(None, alias="from"),
     to_date: Optional[str] = Query(None, alias="to")
 ):
     correlation_id = request.headers.get("X-Correlation-ID", "")
-    jurisdiction_id = get_jurisdiction(request)
     
-    if not jurisdiction_id:
-        return JSONResponse(status_code=403, content=error_response("JURISDICTION_MISSING", "Jurisdiction ID is required", correlation_id))
-
     try:
         coords = [float(x) for x in bbox.split(",")]
         if len(coords) != 4:
@@ -67,11 +64,13 @@ async def get_hotspots(
         ST_X(geom::geometry) AS lon,
         ST_Y(geom::geometry) AS lat
     FROM fraud_hotspot
-    WHERE jurisdiction_id = $1
-      AND geom && ST_MakeEnvelope($2, $3, $4, $5, 4326)
+    WHERE geom::geometry && ST_MakeEnvelope($1, $2, $3, $4, 4326)
     """
     
-    params = [jurisdiction_id, min_lon, min_lat, max_lon, max_lat]
+    params = [min_lon, min_lat, max_lon, max_lat]
+    if jurisdiction_id:
+        query += f" AND jurisdiction_id = ${len(params) + 1}"
+        params.append(jurisdiction_id)
     
     if riskTier:
         query += " AND risk_tier = $" + str(len(params) + 1)

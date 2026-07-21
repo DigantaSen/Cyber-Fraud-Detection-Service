@@ -69,7 +69,7 @@ async def create_case(
         result = await svc.create_case(
             req=body,
             reporter_user_id=current_user.user_id,
-            jurisdiction_id=current_user.jurisdiction_id or "",
+            jurisdiction_id=current_user.jurisdiction_id or "JUR-MH-001",
             correlation_id=corr_uuid,
             idempotency_key=idem_uuid,
         )
@@ -96,7 +96,7 @@ async def get_case(
     try:
         result = await svc.get_case(
             case_id=case_id,
-            jurisdiction_id=current_user.jurisdiction_id or "",
+            jurisdiction_id=current_user.jurisdiction_id or "JUR-MH-001",
         )
         return success_response(result.model_dump(mode="json", by_alias=True), _corr(request))
     except CaseNotFoundError:

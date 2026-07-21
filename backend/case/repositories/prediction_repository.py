@@ -37,9 +37,17 @@ class PredictionRepository:
         Insert a new FusedVerdict row.
         Caller must commit this within the enclosing transaction.
         """
+        from sqlalchemy import text
         now = datetime.now(timezone.utc)
+        pid = uuid.uuid4()
+        await self._session.execute(
+            text("INSERT INTO inference.predictions (prediction_id, case_id, trigger_type, status, correlation_id) "
+                 "VALUES (:pid, :cid, 'CASE_CREATED', 'COMPLETE', :corr) ON CONFLICT (prediction_id) DO NOTHING"),
+            {"pid": pid, "cid": case_id, "corr": correlation_id}
+        )
         verdict = FusedVerdict(
-            prediction_id=uuid.uuid4(),
+            prediction_id=pid,
+            
             case_id=case_id,
             fused_score=fused_score,
             risk_tier=risk_tier,

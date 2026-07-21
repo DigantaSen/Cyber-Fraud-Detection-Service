@@ -35,6 +35,11 @@ export interface CreateCasePayload {
   description: string;
   complaint_type: string;
   suspect_phone?: string;
+  suspect_account?: string;       // Bank/UPI account of suspect (UPI_FRAUD)
+  complaint_lat?: number;         // Latitude of incident location
+  complaint_lon?: number;         // Longitude of incident location
+  reporter_entity_name?: string;  // Complainant's name / organisation
+  reporter_phone?: string;        // Complainant's own contact number
   language_code: string;
 }
 
@@ -90,7 +95,7 @@ export const useRequestUploadUrl = (caseId: string) => {
         payload,
         { headers: { 'Idempotency-Key': idempotencyKey } },
       );
-      return res.data.data as UploadUrlResponse;
+      return (res.data?.data || res.data) as UploadUrlResponse;
     },
     onSuccess: () => {
       // Invalidate so evidence count refreshes after the full upload flow.
@@ -114,7 +119,7 @@ export const useConfirmUpload = () =>
         `/api/v1/citizen/evidence/${evidenceId}/confirm`,
         payload,
       );
-      return res.data.data as ConfirmUploadResponse;
+      return (res.data?.data || res.data) as ConfirmUploadResponse;
     },
   });
 

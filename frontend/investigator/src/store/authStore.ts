@@ -22,6 +22,6 @@ export const useAuthStore = create<AuthState>()(
       clearAuth: () =>
         set({ accessToken: null, userId: null, role: null, isAuthenticated: false }),
     }),
-    { name: 'citizen-auth' }
+    { name: 'investigator-auth' }
   )
 );

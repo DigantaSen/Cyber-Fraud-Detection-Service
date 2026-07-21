@@ -21,9 +21,14 @@ Usage:
 
 VALID_TRANSITIONS: frozenset[tuple[str, str]] = frozenset({
     ("New",           "Assigned"),
-    ("New",           "Pending_AI"),  # inference could not produce an automatable verdict
+    ("New",           "Investigating"),
+    ("New",           "Pending_AI"),
+    ("New",           "Action_Taken"),
+    ("New",           "Closed"),  # inference could not produce an automatable verdict
     ("Assigned",      "Investigating"),
     ("Investigating", "Pending_AI"),
+    ("Investigating", "Action_Taken"),
+    ("Investigating", "Closed"),
     ("Pending_AI",    "Investigating"),   # AI_TIMEOUT re-entry OR HITL review restart
     ("Pending_AI",    "Action_Taken"),   # HITL APPROVE → resume automated actions
     ("Pending_AI",    "Closed"),          # HITL REJECT → disposition = FALSE_POSITIVE
@@ -39,9 +44,14 @@ REASON_REQUIRED_TRANSITIONS: dict[tuple[str, str], list[str]] = {
 # "SYSTEM" = internal service-to-service call (Orchestrator, no user JWT).
 ROLE_ALLOWED_TRANSITIONS: dict[tuple[str, str], list[str]] = {
     ("New",           "Assigned"):       ["INVESTIGATOR", "ADMIN"],
+    ("New",           "Investigating"):  ["INVESTIGATOR", "ADMIN"],
     ("New",           "Pending_AI"):     ["SYSTEM"],
+    ("New",           "Action_Taken"):   ["INVESTIGATOR", "ADMIN"],
+    ("New",           "Closed"):         ["INVESTIGATOR", "ADMIN"],
     ("Assigned",      "Investigating"):  ["INVESTIGATOR", "ADMIN"],
     ("Investigating",  "Pending_AI"):    ["SYSTEM"],
+    ("Investigating",  "Action_Taken"):   ["INVESTIGATOR", "ADMIN"],
+    ("Investigating",  "Closed"):         ["INVESTIGATOR", "ADMIN"],
     ("Pending_AI",    "Investigating"):  ["SYSTEM", "INVESTIGATOR", "ADMIN"],
     ("Pending_AI",    "Action_Taken"):   ["SYSTEM", "INVESTIGATOR", "ADMIN"],
     ("Pending_AI",    "Closed"):         ["INVESTIGATOR", "ADMIN"],
@@ -131,7 +141,7 @@ def validate_transition(
 
     # 5. Some transitions require a specific reason value.
     required_reasons = REASON_REQUIRED_TRANSITIONS.get(pair)
-    if required_reasons and reason not in required_reasons:
+    if required_reasons and caller_role not in ("INVESTIGATOR", "ADMIN") and reason not in required_reasons:
         raise TransitionError(
             current_state,
             new_state,

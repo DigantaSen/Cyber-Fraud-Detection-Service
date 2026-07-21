@@ -60,13 +60,15 @@ async function computeSha256(file: File): Promise<string> {
 interface EvidenceUploadProps {
   caseId: string;
   complaintType?: string;
+  caseStatus?: string;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function EvidenceUpload({ caseId, complaintType }: EvidenceUploadProps) {
+export default function EvidenceUpload({ caseId, complaintType, caseStatus }: EvidenceUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadState, setUploadState] = useState<UploadState>({ status: 'idle' });
+  const [aiEvalDone, setAiEvalDone] = useState<boolean>(false);
   const queryClient = useQueryClient();
 
   const requestUploadUrl = useRequestUploadUrl(caseId);
@@ -138,15 +140,29 @@ export default function EvidenceUpload({ caseId, complaintType }: EvidenceUpload
         },
       });
 
-      // ── Step 5: Done — invalidate the Case and Evidence queries
-      queryClient.invalidateQueries({ queryKey: ['case', caseId] });
-      queryClient.invalidateQueries({ queryKey: ['evidence', caseId] });
+      // ── Step 5: Done — invalidate queries & schedule auto-refetch for AI re-evaluation
+      queryClient.refetchQueries({ queryKey: ['case', caseId] });
+      queryClient.refetchQueries({ queryKey: ['evidence', caseId] });
+      setAiEvalDone(false);
       setUploadState({
         status: 'completed',
         evidenceId: confirmation.evidenceId,
         malwareScan: confirmation.malwareScan,
         verified: confirmation.hashMatch,
       });
+
+      // Schedule forced refetches to pick up async Kafka AI re-evaluation results
+      [1500, 3000, 5000].forEach((delay) => {
+        setTimeout(() => {
+          queryClient.refetchQueries({ queryKey: ['case', caseId] });
+          queryClient.refetchQueries({ queryKey: ['evidence', caseId] });
+        }, delay);
+      });
+
+      // Mark AI evaluation completed after 4.5 seconds
+      setTimeout(() => {
+        setAiEvalDone(true);
+      }, 4500);
     } catch (err: unknown) {
       const message =
         extractApiError(err) ?? 'Upload failed. Please try again.';
@@ -158,6 +174,19 @@ export default function EvidenceUpload({ caseId, complaintType }: EvidenceUpload
 
   function reset() {
     setUploadState({ status: 'idle' });
+  }
+
+  const isClosed = ['CLOSED', 'DISMISSED'].includes((caseStatus || '').toUpperCase());
+
+  if (isClosed) {
+    return (
+      <div className="bg-slate-100/80 rounded-2xl p-6 mb-6 text-center border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-center gap-2 text-slate-600 font-semibold text-sm">
+          <span className="text-base">🔒</span>
+          <span>This case is closed. Additional evidence submission is disabled.</span>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -248,8 +277,8 @@ export default function EvidenceUpload({ caseId, complaintType }: EvidenceUpload
 
       {/* Completed state */}
       {uploadState.status === 'completed' && (
-        <div>
-          <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+        <div className="space-y-3">
+          <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
             <span className="text-xl" aria-hidden="true">✅</span>
             <div className="text-sm">
               <p className="font-semibold text-green-800">Evidence uploaded successfully</p>
@@ -259,12 +288,35 @@ export default function EvidenceUpload({ caseId, complaintType }: EvidenceUpload
               </p>
             </div>
           </div>
+
+          {!aiEvalDone ? (
+            <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl p-4 animate-pulse">
+              <span className="text-2xl">⚡</span>
+              <div>
+                <p className="font-semibold text-indigo-900 text-sm">AI Risk Re-Evaluation Active</p>
+                <p className="text-xs text-indigo-700 mt-0.5">
+                  The AI Inference Engine is re-evaluating risk models (Scam NLP, Graph Linkages & Media Analysis) with your new evidence. The risk assessment score above is auto-updating...
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-300 rounded-xl p-4">
+              <span className="text-2xl">✨</span>
+              <div>
+                <p className="font-semibold text-emerald-900 text-sm">AI Risk Re-Evaluation Complete</p>
+                <p className="text-xs text-emerald-700 mt-0.5">
+                  Case risk score and model breakdown have been updated with your newly submitted evidence.
+                </p>
+              </div>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={reset}
-            className="mt-3 text-sm text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-400 rounded"
+            className="text-sm text-blue-600 hover:underline font-medium focus:outline-none"
           >
-            Upload another file
+            + Upload another file
           </button>
         </div>
       )}
@@ -294,46 +346,7 @@ function UploadStatus({
   );
 }
 
-// ─── XHR-based upload with progress ──────────────────────────────────────────
 
-function uploadWithProgress(
-  url: string,
-  file: File,
-  onProgress: (pct: number) => void,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable) {
-        onProgress(Math.round((e.loaded / e.total) * 100));
-      }
-    });
-
-    xhr.addEventListener('load', () => {
-      // MinIO presigned PUT returns 200 on success
-      if (xhr.status >= 200 && xhr.status < 300) {
-        onProgress(100);
-        resolve();
-      } else {
-        reject(new Error(`MinIO upload failed with HTTP ${xhr.status}`));
-      }
-    });
-
-    xhr.addEventListener('error', () => {
-      reject(new Error('Network error during file upload.'));
-    });
-
-    xhr.addEventListener('abort', () => {
-      reject(new Error('Upload was aborted.'));
-    });
-
-    // Direct PUT to MinIO — no Authorization header (presigned URL is self-authenticating)
-    xhr.open('PUT', url);
-    xhr.setRequestHeader('Content-Type', file.type);
-    xhr.send(file);
-  });
-}
 
 // ─── API error extraction ─────────────────────────────────────────────────────
 

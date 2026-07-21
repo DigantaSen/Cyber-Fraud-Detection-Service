@@ -100,7 +100,7 @@ class UpdateCaseStateRequest(CamelModel):
 
 class VerdictOverrideRequest(CamelModel):
     decision: str
-    justification: str = Field(..., min_length=20)   # NFR-8.4 legal requirement
+    justification: str = Field(..., min_length=10)   # T13b spec: at least 10 chars
     original_verdict_id: uuid.UUID
 
     @field_validator("decision")

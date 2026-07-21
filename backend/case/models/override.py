@@ -21,7 +21,7 @@ class OverrideRecord(Base):
     __tablename__ = "override_records"
     __table_args__ = (
         CheckConstraint("decision IN ('APPROVE','REJECT')", name="override_decision_check"),
-        CheckConstraint("LENGTH(justification) >= 20", name="override_justification_check"),
+        CheckConstraint("LENGTH(justification) >= 10", name="override_justification_check"),
         {"schema": "inference"},
     )
 
