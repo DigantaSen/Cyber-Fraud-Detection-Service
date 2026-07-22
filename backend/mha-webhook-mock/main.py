@@ -109,8 +109,6 @@ async def clear_alerts():
 @app.get("/health/live")
 def health_live():
     return {"status": "alive", "service": "mha-webhook-mock"}
-
-
 @app.post("/bank/block-transfer", status_code=200)
 async def block_bank_transfer(request: Request, payload: Dict[str, Any]):
     """

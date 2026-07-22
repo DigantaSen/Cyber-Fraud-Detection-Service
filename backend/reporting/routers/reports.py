@@ -410,8 +410,6 @@ async def download_package(package_id: str, db: AsyncSession = Depends(get_db)):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch package file: {e}")
-
-
 @router.get("/reports/flagged-cases")
 async def list_flagged_cases(db: AsyncSession = Depends(get_db)):
     """Query PostgreSQL investigation.cases + fused_verdicts directly for real-time risk upgrades."""
