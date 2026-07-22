@@ -559,10 +559,15 @@ def analyze_counterfeit_with_groq(request: CounterfeitDetectRequest) -> dict[str
             }
         ],
         "temperature": 0,
-        # qwen/qwen3.6-27b is a reasoning model — it spends completion tokens on
-        # its internal reasoning trace before writing the final JSON answer.
-        # 600 was too tight for this prompt's nested schema and cut the JSON
-        # off mid-generation, which Groq's json_object validator then rejects.
+        # qwen/qwen3.6-27b is a reasoning model — by default it spends
+        # completion tokens on an internal reasoning trace before writing the
+        # final JSON answer, which was consuming the *entire* token budget on
+        # some prompts (Groq returned json_validate_failed with an empty
+        # failed_generation). reasoning_effort="none" disables the reasoning
+        # trace so all tokens go straight to the structured answer — this
+        # task is a direct classification, not something needing multi-step
+        # reasoning. Also faster, which helps with per-model timeouts.
+        "reasoning_effort": "none",
         "max_completion_tokens": 2048,
         "response_format": {"type": "json_object"},
         "stream": False,
@@ -873,6 +878,9 @@ def analyze_audio_with_groq(request: AudioAnalyzeRequest) -> dict[str, Any]:
         # qwen/qwen3.6-27b is a reasoning model and spends completion tokens on
         # its reasoning trace before the final JSON answer — 500 was too tight
         # and risks the same json_validate_failed truncation as counterfeit-cv.
+        # reasoning_effort="none" disables that trace entirely so the full
+        # token budget goes to the structured answer (see counterfeit-cv fix).
+        "reasoning_effort": "none",
         "max_completion_tokens": 1500,
         "response_format": {"type": "json_object"},
         "stream": False,
@@ -982,6 +990,13 @@ def analyze_graph_features(request: GraphAnalyzeRequest) -> dict[str, Any]:
     edges = request.graph.edges
     node_by_id = {node.id: node for node in nodes}
     degree = {node.id: 0 for node in nodes}
+    # The anchor entity (e.g. the suspect phone) is returned by the graph
+    # service in a separate top-level "anchor" field, not inside "nodes" —
+    # "nodes" only lists the linked cases. Without seeding it here, edges
+    # pointing at the anchor (edge.to == anchorEntityId) never match the
+    # "in degree" check below, so anchor_degree is always 0 regardless of
+    # how many cases actually link to it. Seed it so real connectivity counts.
+    degree.setdefault(request.anchorEntityId, 0)
     repeated_relation_count = 0
     relation_pair_counts: dict[tuple[str, str, str], int] = {}
 
@@ -1063,7 +1078,9 @@ def analyze_graph_features(request: GraphAnalyzeRequest) -> dict[str, Any]:
         signals.append("no strong graph fraud pattern detected")
 
     ring_size = len({node["id"] for node in suspicious_nodes})
-    if request.anchorEntityId in node_by_id and anchor_degree >= 2:
+    # anchorEntityId is never in node_by_id (the anchor isn't part of "nodes" —
+    # see the degree-seeding comment above), so gate this on anchor_degree only.
+    if anchor_degree >= 2:
         ring_size = max(ring_size, min(node_count, anchor_degree + 1))
 
     explanation = (

@@ -77,8 +77,16 @@ async def lifespan(app: FastAPI):
     publisher.connect()
 
     # Create shared HTTP client (never recreated per-request)
+    # NOTE: counterfeit-cv and audio-analyzer proxy to real Groq API calls
+    # (vision/Whisper + reasoning-model LLM), which routinely take well past
+    # 3s — GROQ_TIMEOUT_SECONDS=45 / GROQ_WHISPER_TIMEOUT_SECONDS=60 in .env.
+    # A 3s client-level timeout was killing those calls before Groq could
+    # even respond, regardless of the per_model_timeout_s wait_for wrapper
+    # below. Raised to 65s (just above the longest downstream budget) so
+    # fast local models (scam-nlp, graph-analyzer) are unaffected and slow
+    # Groq-backed models get a real chance to respond.
     _http_client = httpx.AsyncClient(
-        timeout=httpx.Timeout(3.0),  # outer timeout; per-model timeout handled by asyncio.wait_for
+        timeout=httpx.Timeout(65.0),  # outer timeout; per-model timeout handled by asyncio.wait_for
         limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
     )
 

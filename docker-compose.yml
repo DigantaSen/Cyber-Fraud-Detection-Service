@@ -434,7 +434,10 @@ services:
   # ClamAV — Malware Scanning (Evidence Service)
   # ──────────────────────────────────────────────────────────
   clamav:
-    image: clamav/clamav:latest
+    # clamav/clamav:latest (Alpine-based) has no arm64 build — fails on Apple
+    # Silicon. clamav-debian is the official multi-arch (amd64/arm64/ppc64le)
+    # image, same functionality.
+    image: clamav/clamav-debian:latest
     container_name: platform-clamav
     restart: unless-stopped
     ports:
@@ -723,6 +726,7 @@ services:
       REDIS_URL: "redis://:change_me_redis@redis:6379/0"
       CASE_SERVICE_URL: "http://case:8000"
       BOT_SERVICE_URL: "http://bot:8000"
+      EVIDENCE_SERVICE_URL: "http://evidence-service:8000"
     networks:
       - platform-net
     depends_on:
@@ -815,6 +819,13 @@ services:
       - "8008:8000"
     environment:
       LOG_LEVEL: "INFO"
+      CASE_SERVICE_URL: "http://case:8000"
+      SEARCH_SERVICE_URL: "http://search:8000"
+      GEO_SERVICE_URL: "http://geo:8000"
+      GRAPH_SERVICE_URL: "http://graph:8000"
+      EVIDENCE_SERVICE_URL: "http://evidence-service:8000"
+      REPORTING_SERVICE_URL: "http://reporting-service:8000"
+      NOTIFICATION_SERVICE_URL: "http://notification:8000"
     networks:
       - platform-net
     healthcheck:

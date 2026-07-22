@@ -30,7 +30,7 @@ DEFAULT_WEIGHTS: Dict[str, float] = {
 }
 DEFAULT_ENABLED_MODELS: Set[str] = set(DEFAULT_WEIGHTS.keys())
 DEFAULT_CONFIDENCE_THRESHOLD: float = 0.60
-DEFAULT_PER_MODEL_TIMEOUT_S: float = 8.0
+DEFAULT_PER_MODEL_TIMEOUT_S: float = 60.0  # matches infra/redis/seed.sh fusion:per_model_timeout_ms
 
 
 @dataclass

@@ -280,6 +280,7 @@ async def search_cases(
             "assignedTo":     src.get("assignedInvestigator", ""),
             "jurisdictionId": src.get("jurisdictionId", ""),
             "createdAt":      src.get("createdAt", ""),
+            "complaintType":  src.get("complaintType", ""),
         })
 
     # ── Build next cursor ──────────────────────────────────────────────────────
