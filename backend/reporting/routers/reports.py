@@ -1,3 +1,5 @@
+import asyncio
+from fastapi.responses import Response
 import uuid
 import json
 import hashlib
@@ -202,26 +204,32 @@ async def generate_intel_package(payload: IntelPackageRequest, db: AsyncSession 
 
     # 5. Query Neo4j for actual entity graph metrics if available
     graph_export = {"nodesCount": 0, "edgesCount": 0, "connectedEntities": []}
-    try:
-        driver = AsyncGraphDatabase.driver(settings.NEO4J_URI, auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD))
-        async with driver.session() as session:
-            suspect_phone = case_row.suspect_phone
-            if suspect_phone:
-                q = "MATCH (anchor:Entity {id: $entityId}) OPTIONAL MATCH (anchor)-[r]-(linked) RETURN anchor, collect(DISTINCT linked) as nodes, collect(DISTINCT r) as edges"
-                g_res = await session.run(q, entityId=suspect_phone)
-                g_rec = await g_res.single()
-                if g_rec and g_rec["anchor"]:
-                    nodes_list = g_rec["nodes"] or []
-                    edges_list = g_rec["edges"] or []
-                    graph_export = {
-                        "anchorId": suspect_phone,
-                        "nodesCount": len(nodes_list) + 1,
-                        "edgesCount": len(edges_list),
-                        "connectedEntities": [n.get("id") for n in nodes_list if n.get("id")]
-                    }
-        await driver.close()
-    except Exception:
-        pass
+    suspect_phone = case_row.suspect_phone
+    if suspect_phone:
+        async def _query_neo4j():
+            driver = AsyncGraphDatabase.driver(settings.NEO4J_URI, auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD))
+            try:
+                async with driver.session() as session:
+                    q = "MATCH (anchor:Entity {id: $entityId}) OPTIONAL MATCH (anchor)-[r]-(linked) RETURN anchor, collect(DISTINCT linked) as nodes, collect(DISTINCT r) as edges"
+                    g_res = await session.run(q, entityId=suspect_phone)
+                    g_rec = await g_res.single()
+                    if g_rec and g_rec["anchor"]:
+                        nodes_list = g_rec["nodes"] or []
+                        edges_list = g_rec["edges"] or []
+                        return {
+                            "anchorId": suspect_phone,
+                            "nodesCount": len(nodes_list) + 1,
+                            "edgesCount": len(edges_list),
+                            "connectedEntities": [n.get("id") for n in nodes_list if n.get("id")]
+                        }
+            finally:
+                await driver.close()
+            return {"nodesCount": 0, "edgesCount": 0, "connectedEntities": []}
+
+        try:
+            graph_export = await asyncio.wait_for(_query_neo4j(), timeout=2.0)
+        except Exception:
+            pass
 
     # 6. Build Canonical JSON Bundle
     bundle = {
@@ -249,6 +257,14 @@ async def generate_intel_package(payload: IntelPackageRequest, db: AsyncSession 
     signature_b64 = base64.b64encode(signature).decode('utf-8')
     
     # Save to MinIO
+    try:
+        s3_client.head_bucket(Bucket=settings.MINIO_BUCKET_REPORTS)
+    except Exception:
+        try:
+            s3_client.create_bucket(Bucket=settings.MINIO_BUCKET_REPORTS)
+        except Exception:
+            pass
+
     s3_key = f"intel/{case_uuid}/{package_id}.json"
     s3_client.put_object(
         Bucket=settings.MINIO_BUCKET_REPORTS,
@@ -324,3 +340,73 @@ async def get_report(report_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Could not generate download URL")
 
     return {"reportId": str(report.report_id), "downloadUrl": presigned_url}
+
+
+@router.get("/reports")
+async def list_reports(limit: int = 20, db: AsyncSession = Depends(get_db)):
+    """List all generated intelligence packages and reports for Gov / MHA portal."""
+    query = text("""
+        SELECT 
+            p.package_id, p.case_id, p.status, p.bundle_sha256, p.signature_algorithm,
+            p.public_key_fingerprint, p.generated_at, r.report_type, r.object_key
+        FROM reporting.intelligence_packages p
+        LEFT JOIN reporting.reports r ON p.report_id = r.report_id
+        ORDER BY p.generated_at DESC
+        LIMIT :limit
+    """)
+    res = await db.execute(query, {"limit": limit})
+    rows = res.fetchall()
+    
+    items = []
+    for r in rows:
+        download_url = None
+        if r.object_key:
+            try:
+                download_url = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': settings.MINIO_BUCKET_REPORTS, 'Key': r.object_key},
+                    ExpiresIn=86400
+                )
+            except Exception:
+                download_url = f"{settings.MINIO_ENDPOINT}/{settings.MINIO_BUCKET_REPORTS}/{r.object_key}"
+
+        items.append({
+            "packageId": str(r.package_id),
+            "caseId": str(r.case_id),
+            "reportType": r.report_type or "INTELLIGENCE_PACKAGE",
+            "status": r.status,
+            "bundleSha256": r.bundle_sha256,
+            "signatureAlgorithm": r.signature_algorithm,
+            "publicKeyFingerprint": r.public_key_fingerprint,
+            "generatedAt": r.generated_at.isoformat() if r.generated_at else None,
+            "downloadUrl": download_url,
+        })
+    return {"items": items, "total": len(items), "hasMore": False}
+
+
+@router.get("/reports/packages/{package_id}/download")
+async def download_package(package_id: str, db: AsyncSession = Depends(get_db)):
+    """Directly stream the signed canonical JSON package from MinIO to the requester."""
+    query = text("""
+        SELECT p.package_id, p.case_id, r.object_key 
+        FROM reporting.intelligence_packages p
+        LEFT JOIN reporting.reports r ON p.report_id = r.report_id
+        WHERE p.package_id = :pid
+    """)
+    res = await db.execute(query, {"pid": uuid.UUID(package_id)})
+    row = res.fetchone()
+    if not row or not row.object_key:
+        raise HTTPException(status_code=404, detail="Intelligence package not found")
+    
+    try:
+        obj = s3_client.get_object(Bucket=settings.MINIO_BUCKET_REPORTS, Key=row.object_key)
+        content = obj['Body'].read()
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f'attachment; filename="intelligence_package_{row.case_id}.json"'
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch package file: {e}")

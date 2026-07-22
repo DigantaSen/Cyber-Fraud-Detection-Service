@@ -64,7 +64,7 @@ async def request_upload(case_id: str, payload: UploadRequest, db: AsyncSession 
     if payload.content_type not in ALLOWED_MIMETYPES:
         raise HTTPException(status_code=422, detail="MIME type not allowed")
 
-    # Guard: Do not allow evidence upload for CLOSED or DISMISSED cases
+    # Guard: Check case existence and status
     from sqlalchemy import text
     try:
         case_check = await db.execute(
@@ -72,15 +72,20 @@ async def request_upload(case_id: str, payload: UploadRequest, db: AsyncSession 
             {"cid": uuid.UUID(case_id)}
         )
         c_row = case_check.fetchone()
-        if c_row and (c_row[0] or "").upper() in ("CLOSED", "DISMISSED"):
+        if not c_row:
+            raise HTTPException(
+                status_code=404,
+                detail={"errorCode": "CASE_NOT_FOUND", "message": f"Case {case_id} not found."}
+            )
+        if (c_row[0] or "").upper() in ("CLOSED", "DISMISSED"):
             raise HTTPException(
                 status_code=400,
                 detail={"errorCode": "CASE_CLOSED", "message": "Cannot upload evidence to a closed or dismissed case."}
             )
     except HTTPException:
         raise
-    except Exception:
-        pass
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to verify case existence: {e}")
     
     evidence_id = uuid.uuid4()
     s3_key = f"cases/{case_id}/{evidence_id}/{payload.filename}"
