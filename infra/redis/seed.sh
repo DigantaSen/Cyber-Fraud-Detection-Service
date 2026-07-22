@@ -6,7 +6,11 @@
 # Default weights from T13 spec (Execution.md line 779) and §12.2:
 #   scam-nlp: 0.40, counterfeit-cv: 0.20, graph-analyzer: 0.25, audio-analyzer: 0.15
 # Confidence threshold: 0.60 (NFR-8.1, Execution.md line 779)
-# Per-model timeout: 2000ms (T13 spec)
+# Per-model timeout: 60000ms (raised from original T13 spec of 2000ms —
+# 2s was fine for fast local/rule-based models but is far too short now that
+# counterfeit-cv and audio-analyzer make real Groq API calls, which routinely
+# take several seconds to tens of seconds. Flagged to the team; revisit if a
+# real-time SLA depends on the original 2000ms figure.)
 
 set -e
 REDIS_HOST="${REDIS_HOST:-redis}"
@@ -14,7 +18,7 @@ REDIS_HOST="${REDIS_HOST:-redis}"
 echo "Seeding Redis fusion keys on host: $REDIS_HOST"
 
 redis-cli -h "$REDIS_HOST" -a "change_me_redis" SET fusion:confidence_threshold "0.60"
-redis-cli -h "$REDIS_HOST" -a "change_me_redis" SET fusion:per_model_timeout_ms "2000"
+redis-cli -h "$REDIS_HOST" -a "change_me_redis" SET fusion:per_model_timeout_ms "60000"
 redis-cli -h "$REDIS_HOST" -a "change_me_redis" HSET fusion:weights \
     scam-nlp       0.40 \
     counterfeit-cv 0.20 \

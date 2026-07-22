@@ -147,6 +147,56 @@ def select_active_models(
     return active
 
 
+# ── Complaint-type-aware weighting ────────────────────────────────────────────
+# The static T13-spec weights (scam-nlp 0.40 / counterfeit-cv 0.20 /
+# graph-analyzer 0.25 / audio-analyzer 0.15) treat every case the same
+# regardless of complaint type. In practice this means the single most
+# diagnostic signal for a given case — e.g. audio-analyzer for a voice-call
+# scam, counterfeit-cv for a fake-currency report — gets outvoted by less
+# relevant models that simply carry a larger static share (scam-nlp scoring a
+# short, generic complaint text low, while audio-analyzer correctly flags a
+# spoofed voice at 90%+, still nets a LOW overall verdict).
+#
+# PRIMARY_MODEL_BY_COMPLAINT_TYPE names the model that matters most per
+# complaint type. When it's active/responding, it's given the majority share
+# (PRIMARY_MODEL_WEIGHT) and the remaining share is split across the other
+# responding models in their original relative proportions — so corroborating
+# signals (e.g. graph analysis catching a mule-account pattern) still count,
+# just no longer dominate the case's single most relevant signal.
+PRIMARY_MODEL_BY_COMPLAINT_TYPE: Dict[str, str] = {
+    "CALL_FRAUD": "audio-analyzer",
+    "COUNTERFEIT_CURRENCY": "counterfeit-cv",
+    "UPI_FRAUD": "graph-analyzer",   # mule-account/network linkage is most diagnostic for payment fraud
+    "CYBER_CRIME": "scam-nlp",
+}
+PRIMARY_MODEL_WEIGHT = 0.55  # majority, not exclusive — leaves room for corroboration
+
+
+def apply_primary_model_boost(
+    weights: Dict[str, float],
+    complaint_type: Optional[str],
+) -> Dict[str, float]:
+    """
+    Bias the base fusion weights toward whichever model is most relevant to
+    this case's complaint type, before renormalize_weights() narrows things
+    down to whichever models actually responded. No-op if the complaint type
+    has no configured primary model, or that model isn't in the base weights.
+    """
+    primary = PRIMARY_MODEL_BY_COMPLAINT_TYPE.get((complaint_type or "").upper())
+    if not primary or primary not in weights:
+        return dict(weights)
+
+    others = [m for m in weights if m != primary]
+    others_total = sum(weights[m] for m in others)
+
+    boosted = {primary: PRIMARY_MODEL_WEIGHT}
+    remaining_share = 1.0 - PRIMARY_MODEL_WEIGHT
+    if others_total > 0:
+        for m in others:
+            boosted[m] = (weights[m] / others_total) * remaining_share
+    return boosted
+
+
 # ── Weight re-normalization ───────────────────────────────────────────────────
 
 def renormalize_weights(
@@ -354,7 +404,10 @@ async def analyze(request: AnalyzeRequest, http_client: httpx.AsyncClient) -> Fu
         return _make_failed_verdict(pred_id, request)
 
     # Step 7: Re-normalize weights + compute fused score
-    norm_weights = renormalize_weights(config.weights, responding)
+    # Bias toward the model most relevant to this complaint type first, then
+    # renormalize across whichever models actually responded.
+    biased_weights = apply_primary_model_boost(config.weights, request.complaint.complaint_type)
+    norm_weights = renormalize_weights(biased_weights, responding)
 
     base_fused_score = sum(
         raw_results[m]["score"] * norm_weights.get(m, 0)
