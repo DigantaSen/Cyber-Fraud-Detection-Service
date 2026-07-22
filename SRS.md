@@ -69,7 +69,7 @@ The scope includes user management, API gateways, event processing, entity relat
 ### 9.1 Primary Actors
 *   **Citizens:** Interact via mobile applications, web portals, and omnichannel bots (e.g., WhatsApp).
 *   **Law Enforcement Officers:** Use the command center dashboard for case management and geospatial tracking.
-*   **Bank Officials:** Use the dedicated Bank Portal to monitor blocked transactions and AI risk scores.
+*   **Bank Officials:** Use the dedicated Bank Portal (3-tab workflow: Pending Review, Blocked, Dismissed) to monitor flagged high-risk cases sorted newest-first, confirm transaction blocks with mandatory reasons, or mark No Action (Dismiss). Blocking automatically triggers real-time citizen & investigator notifications and updates case audit logs.
 *   **Telecom Administrators:** Use the dedicated Telecom Portal to monitor dropped calls and active scam interdictions.
 *   **Government/MHA Officials:** Use the Gov Portal to monitor high-priority alerts and NCRB reports.
 *   **System Administrators:** Manage RBAC, audit logs, and platform configurations.

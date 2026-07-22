@@ -144,6 +144,12 @@ export default function CaseStatusPage() {
     }
   };
 
+  // Bank action detection — reads from case notes written by bank BFF on block/dismiss
+  const caseNotes: string = (data?.case?.notes || data?.notes || '');
+  const bankActionVal: string = (data?.case?.bankAction || data?.case?.bank_action || data?.bankAction || data?.bank_action || '');
+  const bankActionBlocked   = caseNotes.includes('BANK_ACTION:BLOCKED') || bankActionVal === 'BLOCKED';
+  const bankActionDismissed = caseNotes.includes('BANK_ACTION:DISMISSED');
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
@@ -256,6 +262,32 @@ export default function CaseStatusPage() {
             </div>
           </div>
         </div>
+
+        {/* Bank Action Banner (Middle Section) */}
+        {(bankActionBlocked || bankActionDismissed) && (
+          <div className={`mb-6 border-2 rounded-2xl p-5 shadow-xl flex items-start gap-4 transition-all ${
+            bankActionBlocked ? 'bg-red-950/60 border-red-500 text-red-200' : 'bg-slate-800/80 border-slate-600 text-slate-200'
+          }`}>
+            <span className="text-3xl flex-shrink-0">{bankActionBlocked ? '🚫' : '👁'}</span>
+            <div className="flex-1">
+              <div className="flex items-center justify-between">
+                <h3 className={`text-base font-bold ${bankActionBlocked ? 'text-red-300' : 'text-slate-200'}`}>
+                  {bankActionBlocked ? 'BANK INTERDICTION: Transaction Blocked' : 'BANK REVIEW: No Action Taken (Dismissed)'}
+                </h3>
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${
+                  bankActionBlocked ? 'bg-red-900/80 text-red-200 border border-red-700' : 'bg-slate-700 text-slate-300'
+                }`}>
+                  {bankActionBlocked ? 'ACTION CONFIRMED' : 'DISMISSED'}
+                </span>
+              </div>
+              <p className={`text-sm mt-1.5 leading-relaxed ${bankActionBlocked ? 'text-red-300/90' : 'text-slate-400'}`}>
+                {bankActionBlocked
+                  ? 'The partner bank has reviewed this case and successfully blocked the fraudulent UPI / bank account. Asset freeze and recovery procedures are active.'
+                  : 'The partner bank reviewed this case and determined no interdiction action was warranted at this time.'}
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* LEFT COLUMN: Case Details & AI Verdict */}

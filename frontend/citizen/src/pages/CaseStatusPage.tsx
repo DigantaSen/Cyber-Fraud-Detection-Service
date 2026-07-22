@@ -84,6 +84,20 @@ export default function CaseStatusPage() {
           </div>
         </div>
 
+        {/* Bank Action Banner */}
+        {((caseData.notes && caseData.notes.includes('BANK_ACTION:BLOCKED')) || caseData.bankAction === 'BLOCKED' || caseData.bank_action === 'BLOCKED') && (
+          <div className="bg-red-50 border-2 border-red-400 rounded-2xl shadow-lg p-5 mb-6 flex items-start gap-4">
+            <span className="text-3xl">🚫</span>
+            <div>
+              <h2 className="text-lg font-bold text-red-800">Bank has Blocked this Transaction</h2>
+              <p className="text-sm text-red-700 mt-1">
+                The bank has reviewed your complaint and blocked the fraudulent transaction. Your money recovery process has been initiated.
+              </p>
+              <p className="text-xs text-red-500 mt-2">If you have further concerns, please contact your bank's cyber fraud helpline.</p>
+            </div>
+          </div>
+        )}
+
         {/* AI Verdict */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">AI Risk Assessment</h2>

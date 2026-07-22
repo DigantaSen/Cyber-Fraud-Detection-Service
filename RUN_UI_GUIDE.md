@@ -65,6 +65,13 @@ Both the Bank and Telecom UIs are built with React and Vite. By default, they ar
 
 ### 🔵 Start the Bank Fraud Monitor
 
+The **Bank Fraud Monitor** (`frontend/bank`) provides real-time transaction interdiction for bank officials:
+- **Newest-First Display**: Automatically orders transactions by timestamp descending so the latest cases appear first.
+- **3-Tab Navigation**: Switch between **Pending Review**, **Blocked**, and **Dismissed** transactions.
+- **Block vs. No Action (Dismiss)**:
+  - **🚫 Block Transaction**: Opens a confirmation modal requiring a blocking reason (min 10 chars). Writes an immutable `BANK_ACTION:BLOCKED` note into the DB and sends real-time in-app alerts to both the Citizen (reporter) and Investigator.
+  - **👁 No Action**: Allows dismissing benign cases into the Dismissed tab (`BANK_ACTION:DISMISSED`) without sending external alerts.
+
 1. Open another new terminal and navigate to the Bank frontend directory:
    ```powershell
    cd frontend/bank

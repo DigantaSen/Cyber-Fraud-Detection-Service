@@ -738,9 +738,13 @@ services:
     restart: unless-stopped
     environment:
       NOTIFY_URL: "http://notification:8000/api/v1/notify"
-      REPORTING_URL: "http://reporting:8000/api/v1/reports"
+      REPORTING_URL: "http://reporting-service:8000/api/v1/reports"
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
     networks:
       - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   reporting-service:
     build:
