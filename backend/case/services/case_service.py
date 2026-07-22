@@ -596,6 +596,10 @@ class CaseService:
             priority=case.priority,
             prediction=prediction,
             evidence_count=0,   # TODO T14: count from evidence.evidence table
+            notes=case.notes,
+            bank_action=("BLOCKED" if case.notes and "BANK_ACTION:BLOCKED" in case.notes
+                         else "DISMISSED" if case.notes and "BANK_ACTION:DISMISSED" in case.notes
+                         else None),
             created_at=case.created_at,
             updated_at=case.updated_at,
         )

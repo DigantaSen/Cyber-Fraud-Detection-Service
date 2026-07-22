@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     # Webhook HMAC secrets
     TELECOM_WEBHOOK_SECRET: str = "change_me_telecom"
     BANK_WEBHOOK_SECRET: str = "change_me_bank"
+    TELECOM_WEBHOOK_SECRET: str = "change_me_telecom"
+    BANK_WEBHOOK_SECRET: str = "change_me_bank"
     COUNTERFEIT_WEBHOOK_SECRET: str = "change_me_counterfeit"
+    
+    ORCHESTRATOR_URL: str = "http://inference-orchestrator:8000"
+    MHA_WEBHOOK_URL: str = "http://mha-webhook-mock:8000/alert"
+    BANK_STUB_URL: str = "http://mha-webhook-mock:8000/bank/block-transfer"
+
     
 settings = Settings()

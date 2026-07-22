@@ -55,6 +55,10 @@ def publish_event(producer, topic: str, event_type: str, data: dict, correlation
     }
     producer.produce(topic, value=json.dumps(payload).encode('utf-8'))
     producer.poll(0)
+    try:
+        producer.flush(1.0)
+    except Exception:
+        pass
 
 
 @router.post("/send")
@@ -116,7 +120,7 @@ async def send_mha_alert(
     latency_ms = int((end_time - start_time) * 1000)
     
     # Publish MHAAlert.Sent
-    publish_event(producer, "MHAAlert.Sent", "MHAAlert.Sent", {
+    publish_event(producer, "mhaalert.sent", "MHAAlert.Sent", {
         "alertId": alert_id,
         "caseId": payload.caseId,
         "alertType": payload.alertType,

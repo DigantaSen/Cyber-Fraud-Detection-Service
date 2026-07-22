@@ -36,6 +36,40 @@ Once the script completes successfully, the platform is ready! You can explore t
 
 ---
 
+## 🧠 Key Platform Assumptions & Business Rules
+
+1. **⚡ Real-Time Telecom Interdiction Path (T15 — <300ms SLA)**:
+   - Synchronous bypass path for active telecom scam calls: `Telecom Event` ➔ `Event Processing` ➔ `Inference Orchestrator` (`scam-nlp` + `audio-analyzer` under a 200ms budget).
+   - On `HIGH`/`CRITICAL` risk verdict: Concurrently executes **Bank Pre-Transfer Block** (`POST /bank/block-transfer`) and **MHA Webhook Alert** (`POST /alert`), returning a `BLOCK` interdiction decision to the telecom carrier within **<300ms P99 SLA** (measured: ~87ms).
+   - Asynchronous outbox writes (`TelecomEvent.Ingested` & `Intervention.Requested`) execute via background tasks *after* the HTTP response returns to preserve legal admissibility without blocking the SLA.
+
+2. **🏦 Bank Portal Involvement Scope (4-Condition Rule)**:
+   - Since there is no separate form input field for Transaction ID in the Citizen Report Form, a case is **ONLY** routed to and displayed in the Bank Portal to stop transactions if **ALL 4 CONDITIONS** are satisfied:
+     1. **Transaction ID / UTR / Ref Number** is present in the title or description text (e.g. `TXN-987654`, `UTR: 9876543210`, `Ref #12345`).
+     2. **Fraud Bank Account Number or UPI ID** (e.g. `suspect@okicici`, `987654321098`) is specified in the suspect section or description.
+     3. **Monetary Amount** is explicitly mentioned in the title/description in any Indian numeric format (e.g. `1.55 lakh`, `2.5 Lakhs`, `1.5 crore`, `50,000`, `₹75,000`, `INR 1,20,000`, `Rs 50000`).
+     4. **Risk Tier** is **`HIGH`** or **`CRITICAL`** (or fused score ≥ 70).
+   - *If any condition is missing, the Bank does NOT get involved, and the case remains within Telecom or Law Enforcement (MHA) scope.*
+
+3. **🚨 MHA National Portal Alert Triggers (T13-C)**:
+   - MHA alerts are automatically triggered for both **`HIGH`** and **`CRITICAL`** risk tiers when AI multi-source fusion, evidence re-analysis, or investigator overrides escalate threat indicators. Real-time alerts stream to the `gov-mha` portal via Server-Sent Events (SSE).
+
+5. **🏦 Bank Interdiction & Action Workflow (3-Tab System & Notifications)**:
+   - **Newest-First Display**: Transactions across all tabs (Pending Review, Blocked, Dismissed) are sorted chronologically with the newest cases at the top.
+   - **3-Tab Workflow**:
+     - **⚠️ Pending Review**: Active HIGH/CRITICAL cases matching the 4-condition rule. Bank officials can select **🚫 Block Transaction** or **👁 No Action / Dismiss**.
+     - **🚫 Blocked**: Confirmed blocked cases. Blocking writes an immutable `BANK_ACTION:BLOCKED` note into `investigation.cases` and dispatches in-app notifications to both the Citizen (reporter) and Investigator.
+     - **👁 Dismissed**: Dismissed cases where no action was taken (`BANK_ACTION:DISMISSED`), archived without external notifications.
+   - **Citizen & Investigator Visual Feedback**:
+     - **Citizen Portal**: Renders a recovery banner (*"Bank has Blocked this Transaction — Money recovery process initiated"*).
+     - **Investigator Portal**: Displays a middle operational card (`BANK INTERDICTION: Transaction Blocked`) positioned below the 4-step lifecycle path and above the AI verdict grid.
+
+4. **📁 Evidence Integrity & Signed Packages**:
+   - Evidence presigned URLs bind exact `Content-Type` headers for tamper-resistant MinIO uploads.
+   - Reporting service generates canonical RS256-signed JSON intelligence packages for law enforcement and government court admissibility.
+
+---
+
 ## Project Structure
 
 ```text

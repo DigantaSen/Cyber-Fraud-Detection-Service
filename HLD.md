@@ -191,6 +191,7 @@ The platform is decomposed into **15 core services**. To bridge naturally into t
     *   *Production extensions:* `request-id`, `opentelemetry` (traces routed via OTel Collector to Tempo).
 2.  **BFFs (Citizen, Investigator, Bank, Telecom, Gov):**
     *   *Responsibilities:* Aggregates microservice data for UI consumption. Owned by Surjit (Citizen, Bank, Telecom) and Nilkanta (Investigator, Gov).
+    *   *Bank BFF (department-bffs/routers/bank.py):* Implements the 4-condition filtering rule, queries Postgres directly via asyncpg fallback, orders cases newest-first, manages the 3-tab workflow (Pending, Blocked, Dismissed), appends `BANK_ACTION` notes to `investigation.cases`, and dispatches real-time alerts to Notification service.
 
 ### 4.2 Control Plane Services
 3.  **Identity Service:**

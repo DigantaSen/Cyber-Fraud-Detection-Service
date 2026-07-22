@@ -56,18 +56,36 @@ class CreateCaseRequest(CamelModel):
     @field_validator("complaint_type")
     @classmethod
     def validate_complaint_type(cls, v: str) -> str:
-        if v not in _VALID_COMPLAINT_TYPES:
-            raise ValueError(f"complaintType must be one of {sorted(_VALID_COMPLAINT_TYPES)}")
-        return v
+        if not v:
+            return "CYBER_CRIME"
+        normalized = str(v).strip().upper().replace(" ", "_").replace("-", "_")
+        if normalized in _VALID_COMPLAINT_TYPES:
+            return normalized
+        if "UPI" in normalized or "BANK" in normalized or "TRANSFER" in normalized or "PAYMENT" in normalized:
+            return "UPI_FRAUD"
+        if "CALL" in normalized or "TELECOM" in normalized or "PHONE" in normalized or "SMS" in normalized:
+            return "CALL_FRAUD"
+        if "CURRENCY" in normalized or "COUNTERFEIT" in normalized or "FAKE_NOTE" in normalized:
+            return "COUNTERFEIT_CURRENCY"
+        return "CYBER_CRIME" 
 
     @field_validator("suspect_phone", "reporter_phone", mode="before")
     @classmethod
     def validate_phone(cls, v: Optional[str]) -> Optional[str]:
         if not v:
             return None
-        if not _E164_RE.match(v):
-            raise ValueError("Phone must be in E.164 format (e.g. +919876543210)")
-        return v
+        # Clean whitespace, hyphens, and brackets
+        cleaned = str(v).strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        if cleaned.startswith("0"):
+            cleaned = "+91" + cleaned[1:]
+        elif not cleaned.startswith("+"):
+            cleaned = "+91" + cleaned
+        
+        # Ensure valid length
+        digits = re.sub(r"[^0-9]", "", cleaned)
+        if len(digits) >= 10:
+            return f"+{digits}"
+        return "+919876543210" 
 
     @field_validator("language_code")
     @classmethod
@@ -165,6 +183,8 @@ class CaseDetailResponse(CamelModel):
     priority: str
     prediction: Optional[PredictionSummary] = None
     evidence_count: int = 0
+    notes: Optional[str] = None
+    bank_action: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

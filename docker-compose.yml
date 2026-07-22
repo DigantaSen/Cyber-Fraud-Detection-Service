@@ -639,6 +639,7 @@ services:
       ML_COUNTERFEIT_URL: "http://ml-counterfeit-cv:8000"
       ML_GRAPH_URL: "http://ml-graph-analyzer:8000"
       ML_AUDIO_URL: "http://ml-audio-analyzer:8000"
+      NOTIFICATION_SERVICE_URL: "http://notification:8000"
       LOG_LEVEL: "INFO"
     ports:
       - "8014:8000"
@@ -741,9 +742,13 @@ services:
     restart: unless-stopped
     environment:
       NOTIFY_URL: "http://notification:8000/api/v1/notify"
-      REPORTING_URL: "http://reporting:8000/api/v1/reports"
+      REPORTING_URL: "http://reporting-service:8000/api/v1/reports"
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
     networks:
       - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   reporting-service:
     build:
@@ -929,6 +934,17 @@ services:
     healthcheck:
       disable: true
 
+  # T13c -- Mock MHA Government Portal Webhook (port 8099)
+  mha-webhook-mock:
+    build:
+      context: ./backend/mha-webhook-mock
+    container_name: platform-mha-webhook-mock
+    restart: unless-stopped
+    ports:
+      - "8099:8000"
+    networks:
+      - platform-net
+
   notification:
     build:
       context: ./backend/notification
@@ -939,7 +955,7 @@ services:
     environment:
       REDIS_URL: "redis://:change_me_redis@redis:6379/0"
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
-      MHA_WEBHOOK_URL: "http://kong:8000/webhook-mock"
+      MHA_WEBHOOK_URL: "http://mha-webhook-mock:8000/alert"
       LOG_LEVEL: "INFO"
     networks:
       - platform-net
@@ -964,7 +980,7 @@ services:
     environment:
       REDIS_URL: "redis://:change_me_redis@redis:6379/0"
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
-      MHA_WEBHOOK_URL: "http://kong:8000/webhook-mock"
+      MHA_WEBHOOK_URL: "http://mha-webhook-mock:8000/alert"
       LOG_LEVEL: "INFO"
     networks:
       - platform-net
