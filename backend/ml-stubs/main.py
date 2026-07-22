@@ -20,15 +20,14 @@ COUNTERFEIT_CV_PROVIDER = os.getenv("COUNTERFEIT_CV_PROVIDER", "groq").lower()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 GROQ_SCAM_NLP_MODEL = os.getenv("GROQ_SCAM_NLP_MODEL", "llama-3.3-70b-versatile")
-GROQ_VISION_MODEL = os.getenv(
-    "GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
-)
+# meta-llama/llama-4-scout-17b-16e-instruct was deprecated by Groq and is no
+# longer served (returns HTTPStatusError). qwen/qwen3.6-27b is Groq's current
+# supported vision model — see https://console.groq.com/docs/vision.
+GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.6-27b")
 GROQ_TIMEOUT_SECONDS = float(os.getenv("GROQ_TIMEOUT_SECONDS", "45"))
 AUDIO_ANALYZER_PROVIDER = os.getenv("AUDIO_ANALYZER_PROVIDER", "groq").lower()
 GROQ_WHISPER_MODEL = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3")
-GROQ_AUDIO_LLM_MODEL = os.getenv(
-    "GROQ_AUDIO_LLM_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"
-)
+GROQ_AUDIO_LLM_MODEL = os.getenv("GROQ_AUDIO_LLM_MODEL", "qwen/qwen3.6-27b")
 GROQ_WHISPER_TIMEOUT_SECONDS = float(os.getenv("GROQ_WHISPER_TIMEOUT_SECONDS", "60"))
 
 SUPPORTED_LANGUAGES = {
@@ -519,7 +518,14 @@ def analyze_counterfeit_safely(request: CounterfeitDetectRequest) -> dict[str, A
     if COUNTERFEIT_CV_PROVIDER == "groq":
         try:
             return analyze_counterfeit_with_groq(request)
+        except httpx.HTTPStatusError as exc:
+            print(
+                f"[counterfeit-cv] Groq HTTPStatusError: status={exc.response.status_code} "
+                f"body={exc.response.text[:500]}"
+            )
+            return counterfeit_stub_response(f"groq unavailable: {type(exc).__name__}")
         except Exception as exc:
+            print(f"[counterfeit-cv] Groq call failed: {type(exc).__name__}: {exc}")
             return counterfeit_stub_response(f"groq unavailable: {type(exc).__name__}")
 
     return counterfeit_stub_response()
@@ -553,7 +559,11 @@ def analyze_counterfeit_with_groq(request: CounterfeitDetectRequest) -> dict[str
             }
         ],
         "temperature": 0,
-        "max_completion_tokens": 600,
+        # qwen/qwen3.6-27b is a reasoning model — it spends completion tokens on
+        # its internal reasoning trace before writing the final JSON answer.
+        # 600 was too tight for this prompt's nested schema and cut the JSON
+        # off mid-generation, which Groq's json_object validator then rejects.
+        "max_completion_tokens": 2048,
         "response_format": {"type": "json_object"},
         "stream": False,
     }
@@ -860,7 +870,10 @@ def analyze_audio_with_groq(request: AudioAnalyzeRequest) -> dict[str, Any]:
         "model": GROQ_AUDIO_LLM_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0,
-        "max_completion_tokens": 500,
+        # qwen/qwen3.6-27b is a reasoning model and spends completion tokens on
+        # its reasoning trace before the final JSON answer — 500 was too tight
+        # and risks the same json_validate_failed truncation as counterfeit-cv.
+        "max_completion_tokens": 1500,
         "response_format": {"type": "json_object"},
         "stream": False,
     }

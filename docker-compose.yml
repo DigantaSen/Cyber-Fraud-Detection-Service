@@ -369,7 +369,9 @@ services:
       MODEL_VERSION: stub-v0.1
       COUNTERFEIT_CV_PROVIDER: groq
       GROQ_API_KEY: ${GROQ_API_KEY:-}
-      GROQ_VISION_MODEL: meta-llama/llama-4-scout-17b-16e-instruct
+      # meta-llama/llama-4-scout-17b-16e-instruct was deprecated by Groq;
+      # qwen/qwen3.6-27b is the current supported vision model.
+      GROQ_VISION_MODEL: qwen/qwen3.6-27b
       GROQ_TIMEOUT_SECONDS: 45
     ports:
       - "8101:8000"
@@ -412,7 +414,9 @@ services:
       AUDIO_ANALYZER_PROVIDER: groq
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       GROQ_WHISPER_MODEL: whisper-large-v3
-      GROQ_AUDIO_LLM_MODEL: meta-llama/llama-4-scout-17b-16e-instruct
+      # meta-llama/llama-4-scout-17b-16e-instruct was deprecated by Groq;
+      # qwen/qwen3.6-27b is the current supported vision-capable model.
+      GROQ_AUDIO_LLM_MODEL: qwen/qwen3.6-27b
       GROQ_WHISPER_TIMEOUT_SECONDS: 60
       GROQ_TIMEOUT_SECONDS: 45
     ports:
