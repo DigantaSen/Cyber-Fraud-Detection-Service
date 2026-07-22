@@ -169,8 +169,9 @@ TOPICS = list(TOPIC_MAP.keys())
 
 def _extract_uuid(payload: Dict, fields: list) -> Optional[uuid.UUID]:
     """Try each field name in order; return the first valid UUID found."""
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     for field in fields:
-        val = payload.get(field)
+        val = payload.get(field) or data.get(field)
         if val:
             try:
                 return uuid.UUID(str(val))
@@ -181,8 +182,9 @@ def _extract_uuid(payload: Dict, fields: list) -> Optional[uuid.UUID]:
 
 def _extract_str(payload: Dict, fields: list) -> Optional[str]:
     """Try each field name; return first non-empty string."""
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     for field in fields:
-        val = payload.get(field)
+        val = payload.get(field) or data.get(field)
         if val:
             return str(val)
     return None

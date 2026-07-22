@@ -46,6 +46,7 @@ from ml_clients import (
     fetch_evidence_content,
     fetch_graph_linkages,
 )
+from config import settings
 from publisher import publisher
 from redis_client import FusionConfig, redis_client
 
@@ -162,6 +163,59 @@ def renormalize_weights(
         return {}
     return {m: w / total for m, w in active_w.items()}
 
+
+
+
+# ── T13c: MHA Alert Direct Bypass ─────────────────────────────────────────────
+
+async def _fire_mha_alert(
+    http_client: httpx.AsyncClient,
+    notification_url: str,
+    case_id: str,
+    risk_tier: str,
+    fused_score: float,
+    suspect: Optional[str],
+    correlation_id: str,
+) -> None:
+    """
+    High-priority bypass: POST /notify/mha-alert directly to Notification Service.
+    Called concurrently with Kafka publish for HIGH and CRITICAL verdicts.
+    Uses a 4.5s timeout to preserve the <5s end-to-end SLO (FR-10.7).
+
+    Never raises — all exceptions are logged so the calling analyze() path
+    always completes and returns the FusedVerdict regardless.
+    """
+    start = asyncio.get_event_loop().time()
+    payload = {
+        "caseId": case_id,
+        "alertType": "FRAUD_RING_DETECTED",
+        "riskTier": risk_tier,
+        "summary": (
+            f"AI fusion verdict {risk_tier} (score={fused_score:.1f}) — "
+            "direct orchestrator bypass. Immediate action required."
+        ),
+        "suspects": [suspect] if suspect else [],
+        "jurisdictionId": "MHA_HQ",
+        "triggeredBy": correlation_id,
+    }
+    try:
+        resp = await http_client.post(
+            f"{notification_url}/api/v1/notify/mha-alert",
+            json=payload,
+            headers={"X-Correlation-ID": correlation_id},
+            timeout=4.5,
+        )
+        elapsed_ms = int((asyncio.get_event_loop().time() - start) * 1000)
+        logger.info(
+            f"[T13c] MHA alert dispatched: case={case_id} tier={risk_tier} "
+            f"score={fused_score:.1f} latency={elapsed_ms}ms http={resp.status_code}"
+        )
+    except Exception as exc:
+        elapsed_ms = int((asyncio.get_event_loop().time() - start) * 1000)
+        logger.error(
+            f"[T13c] MHA alert FAILED: case={case_id} tier={risk_tier} "
+            f"elapsed={elapsed_ms}ms error={exc}"
+        )
 
 # ── Core engine ───────────────────────────────────────────────────────────────
 
@@ -366,7 +420,26 @@ async def analyze(request: AnalyzeRequest, http_client: httpx.AsyncClient) -> Fu
         pending_review=pending_review,
     )
 
-    # Step 10: Publish
+    # Step 10: Publish — T13c: fire MHA alert concurrently with Kafka publish
+    #   Create the MHA task BEFORE the synchronous Kafka send so both run in parallel.
+    #   asyncio.create_task() schedules the coroutine immediately on the event loop;
+    #   publisher.publish_completed() (sync/blocking) runs while the HTTP request is in flight.
+    mha_task: Optional[asyncio.Task] = None
+    if risk_tier in ("HIGH", "CRITICAL"):
+        _entity = request.complaint.suspect_phone or request.complaint.suspect_account
+        mha_task = asyncio.create_task(
+            _fire_mha_alert(
+                http_client,
+                settings.NOTIFICATION_SERVICE_URL,
+                case_id_str,
+                risk_tier,
+                fused_score,
+                _entity,
+                corr_id_str,
+            )
+        )
+        logger.info(f"[T13c] MHA alert task created for case={case_id_str} tier={risk_tier}")
+
     publisher.publish_completed(
         prediction_id=prediction_id,
         case_id=request.case_id,
@@ -382,6 +455,17 @@ async def analyze(request: AnalyzeRequest, http_client: httpx.AsyncClient) -> Fu
         # Pass suspect phone so graph-consumer updates fraudScore on Neo4j node
         entity_id=request.complaint.suspect_phone or request.complaint.suspect_account,
     )
+
+    # T13c: Await MHA alert task (max 5s — SLO boundary)
+    if mha_task is not None:
+        try:
+            await asyncio.wait_for(asyncio.shield(mha_task), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.error(
+                f"[T13c] MHA alert SLO BREACH: task exceeded 5s for case={case_id_str}"
+            )
+        except Exception as _mha_exc:
+            logger.error(f"[T13c] MHA alert task error for case={case_id_str}: {_mha_exc}")
 
     return FusedVerdict(
         prediction_id=prediction_id,

@@ -38,5 +38,8 @@ class Settings(BaseSettings):
     ML_GRAPH_URL: str = "http://ml-graph-analyzer:8000"
     ML_AUDIO_URL: str = "http://ml-audio-analyzer:8000"
 
+    # ── Notification Service (T13c — MHA alert bypass) ──────────────
+    NOTIFICATION_SERVICE_URL: str = "http://notification:8000"
+
 
 settings = Settings()
