@@ -109,3 +109,17 @@ async def clear_alerts():
 @app.get("/health/live")
 def health_live():
     return {"status": "alive", "service": "mha-webhook-mock"}
+
+
+@app.post("/bank/block-transfer", status_code=200)
+async def block_bank_transfer(request: Request, payload: Dict[str, Any]):
+    """
+    Simulated Bank Core API for immediate transfer block.
+    """
+    logger.info(f"[BANK BLOCK STUB] Account transfer blocked for session {payload.get('sessionId')}")
+    return {
+        "status": "blocked",
+        "referenceId": f"BLK-{str(uuid.uuid4())[:8]}",
+        "sessionId": payload.get("sessionId"),
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    }

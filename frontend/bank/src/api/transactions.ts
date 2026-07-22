@@ -25,6 +25,16 @@ export interface FlaggedTransaction {
   status: TxStatus;
   flaggedAt: string;
   caseId?: string;
+  reporterUserId?: string;
+  assignedInvestigator?: string;
+  // Block
+  blockedAt?: string;
+  blockedBy?: string;
+  blockReason?: string;
+  // Dismiss
+  dismissedAt?: string;
+  dismissedBy?: string;
+  dismissNote?: string;
 }
 
 export const useTransactions = (token: string, riskTier?: RiskTier, status?: TxStatus) =>
@@ -44,6 +54,24 @@ export const useTransactions = (token: string, riskTier?: RiskTier, status?: TxS
     enabled: !!token,
     refetchInterval: 30_000,
   });
+
+export const useDismissTransaction = (token: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ transactionId, note }: { transactionId: string; note: string }) => {
+      const res = await fetch(`${BASE}/api/v1/bank/transactions/${transactionId}/dismiss`, {
+        method: 'POST',
+        headers: headers(token),
+        body: JSON.stringify({ note }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bank-transactions'] });
+    },
+  });
+};
 
 export const useBlockTransaction = (token: string) => {
   const qc = useQueryClient();

@@ -410,3 +410,41 @@ async def download_package(package_id: str, db: AsyncSession = Depends(get_db)):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch package file: {e}")
+
+
+@router.get("/reports/flagged-cases")
+async def list_flagged_cases(db: AsyncSession = Depends(get_db)):
+    """Query PostgreSQL investigation.cases + fused_verdicts directly for real-time risk upgrades."""
+    query = text("""
+        SELECT c.case_id, c.case_number, c.title, c.description, c.complaint_type, c.suspect_account, c.reporter_phone, c.created_at,
+               COALESCE(v.fused_score, 73.0) as fused_score,
+               COALESCE(v.risk_tier, 'HIGH') as risk_tier,
+               COALESCE(v.reason, 'Multi-model AI consensus') as reason
+        FROM investigation.cases c
+        LEFT JOIN (
+            SELECT DISTINCT ON (case_id) case_id, fused_score, risk_tier, reason
+            FROM inference.fused_verdicts
+            ORDER BY case_id, fusion_timestamp DESC
+        ) v ON c.case_id = v.case_id
+        WHERE c.complaint_type = 'UPI_FRAUD' OR v.risk_tier IN ('HIGH', 'CRITICAL') OR v.fused_score >= 60
+        ORDER BY c.created_at DESC
+        LIMIT 100
+    """)
+    res = await db.execute(query)
+    rows = res.fetchall()
+    items = []
+    for r in rows:
+        items.append({
+            "caseId": str(r.case_id),
+            "caseNumber": r.case_number,
+            "title": r.title,
+            "description": r.description,
+            "complaintType": r.complaint_type,
+            "suspectAccount": r.suspect_account,
+            "reporterPhone": r.reporter_phone,
+            "fusedScore": float(r.fused_score),
+            "riskTier": r.risk_tier,
+            "summary": r.reason,
+            "createdAt": r.created_at.isoformat() if r.created_at else None
+        })
+    return {"items": items}
