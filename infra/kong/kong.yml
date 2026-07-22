@@ -1,0 +1,226 @@
+_format_version: "3.0"
+_transform: true
+
+# ============================================================
+# Kong API Gateway — Declarative Config (DB-less mode)
+# Services and routes are added here as each backend is built.
+# Reload with: make kong-reload
+# ============================================================
+
+# ── Global Plugins (apply to every route) ──────────────────
+plugins:
+  - name: correlation-id
+    config:
+      header_name: X-Correlation-ID
+      generator: uuid#counter
+      echo_downstream: true
+
+
+  - name: response-ratelimiting
+    config:
+      limits:
+        default:
+          minute: 1000        # per authenticated token
+      policy: redis
+      redis:
+        host: redis
+        port: 6379
+        password: "change_me_redis"
+
+  - name: opentelemetry
+    config:
+      traces_endpoint: http://tempo:4318/v1/traces
+      resource_attributes:
+        service.name: kong-gateway
+
+# ── Services (populated as T2 API contracts are written) ────
+services:
+  # Auth Service
+  - name: auth-service
+    url: http://auth:8000
+    routes:
+      - name: auth-routes
+        paths:
+          - /api/v1/auth
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 20
+          policy: local
+          limit_by: ip
+
+  # Citizen BFF
+  - name: citizen-bff
+    url: http://citizen-bff:8000
+    routes:
+      - name: citizen-routes
+        paths:
+          - /api/v1/citizen
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
+  # Investigator BFF
+  - name: investigator-bff
+    url: http://investigator-bff:8000
+    routes:
+      - name: investigator-routes
+        paths:
+          - /api/v1/investigator
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
+  # Bank BFF
+  - name: bank-bff
+    url: http://department-bffs:8000
+    routes:
+      - name: bank-routes
+        paths:
+          - /api/v1/bank
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
+  # Telecom BFF
+  - name: telecom-bff
+    url: http://department-bffs:8000
+    routes:
+      - name: telecom-routes
+        paths:
+          - /api/v1/telecom
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
+  # Gov BFF
+  - name: gov-bff
+    url: http://department-bffs:8000
+    routes:
+      - name: gov-routes
+        paths:
+          - /api/v1/gov
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
+  # Search Service (public read, JWT required)
+  - name: search-service
+    url: http://search:8000
+    routes:
+      - name: search-routes
+        paths:
+          - /api/v1/search
+        strip_path: false
+
+  # Event Processing (Telecom webhook endpoint — no JWT, validated by HMAC)
+  - name: event-processing
+    url: http://event-processing:8000
+    routes:
+      - name: event-routes
+        paths:
+          - /api/v1/events
+        strip_path: false
+
+  # Audit Service (T7) — internal read-only, JWT required (INVESTIGATOR / ADMIN)
+  # ⚠️  Path uses /api/v1/audit (not /audit) to match all other backend services.
+  #     Investigator BFF (T6b) will proxy through here; direct access is guarded by JWT.
+  - name: audit-service
+    url: http://audit:8000
+    routes:
+      - name: audit-routes
+        paths:
+          - /api/v1/audit
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
+  # Graph Service (T8c) - internal only, JWT required
+  - name: graph-service
+    url: http://graph:8000
+    routes:
+      - name: graph-routes
+        paths:
+          - /api/v1/graph
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
+  # Geospatial Service (T8d) - internal only, JWT required
+  - name: geo-service
+    url: http://geo:8000
+    routes:
+      - name: geo-routes
+        paths:
+          - /api/v1/geo
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
+  # Notification Service (T8e) - internal only, JWT required
+  - name: notification-service
+    url: http://notification:8000
+    routes:
+      - name: notification-routes
+        paths:
+          - /api/v1/notify
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify:
+            - exp
+          key_claim_name: kid
+
+# ── Consumers (JWT issuers — populated after auth service is live) ──
+consumers:
+  - username: platform-auth
+    jwt_secrets:
+      - key: "v1"
+        algorithm: RS256
+        rsa_public_key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzR2Dy66S17FIRB6BMSf6
+          CubB57h6w/LZOoEKZ7U87AhDE6CHOESy0SgPzOntapHyeakhhTPiGMSRIqYzXiPu
+          KoAM7r1dxJb815frHQ2eQhAHmFJuJa4VXiFJuME5PI2v6TBvyjWeUQctEwqxFS88
+          KQdGeZ8qJJdtpxMDliiFQmLIAOPF0gm1ByGnuyXjLgaJ1yP5y5cE7zWoIE84IJja
+          aMs5ur/UJo9lyPQy3F4vwCFSdbRZWXEdnDQGDbJeX2KorhAxN7Inq7Bm8IOIoHkB
+          b2hTP23wZK1/+batZX/YkHiwpTr+AHwdmHi8Rz+Wa2IqI4xvrQi/L5fc2fjacgmQ
+          tQIDAQAB
+          -----END PUBLIC KEY-----
+          
+
+

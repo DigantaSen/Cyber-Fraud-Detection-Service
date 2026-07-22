@@ -1,0 +1,19 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "false",
+    "properties": {
+      "evidenceId": { "type": "keyword" },
+      "caseId": { "type": "keyword" },
+      "fileName": { "type": "text" },
+      "mimeType": { "type": "keyword" },
+      "sha256": { "type": "keyword" },
+      "fileSize": { "type": "long" },
+      "uploadedBy": { "type": "keyword" },
+      "createdAt": { "type": "date" }
+    }
+  }
+}

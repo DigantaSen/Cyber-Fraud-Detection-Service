@@ -1,0 +1,1138 @@
+# ============================================================
+# AI Fraud Detection Platform — Hackathon Docker Compose
+# ============================================================
+# Usage:  make up          → start all services
+#         make down        → stop and remove containers
+#         make logs        → tail all logs
+#         make ps          → service status
+#         make migrate     → run DB migrations (after services are built)
+#         make reset       → nuclear reset (removes all volumes)
+#
+# Cold start: ~90 seconds after images are pulled.
+# Services: postgres, postgis, neo4j, redis, opensearch,
+#            opensearch-dashboards, kafka, minio, minio-init,
+#            kong, prometheus, grafana, loki, tempo
+# ============================================================
+
+name: fraud-detection-platform
+
+# ── Network ───────────────────────────────────────────────────
+networks:
+  platform-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ── Named Volumes ─────────────────────────────────────────────
+volumes:
+  postgres-data:
+  postgis-data:
+  neo4j-data:
+  neo4j-logs:
+  redis-data:
+  opensearch-data:
+  kafka-data:
+  minio-data:
+  grafana-data:
+  loki-data:
+  tempo-data:
+
+# ═══════════════════════════════════════════════════════════════
+# SERVICES
+# ═══════════════════════════════════════════════════════════════
+services:
+
+  # ──────────────────────────────────────────────────────────
+  # PRIMARY PostgreSQL
+  # Services connect directly to postgres:5432
+  # ──────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: platform-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-platform_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-platform}
+    command: >
+      postgres
+      -c max_connections=150
+      -c shared_buffers=256MB
+      -c effective_cache_size=768MB
+      -c maintenance_work_mem=64MB
+      -c wal_level=logical
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5435:5432"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-platform_user} -d ${POSTGRES_DB:-platform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ──────────────────────────────────────────────────────────
+  # PostGIS — Dedicated Geospatial Store
+  # ──────────────────────────────────────────────────────────
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: platform-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGIS_USER:-geo_user}
+      POSTGRES_PASSWORD: ${POSTGIS_PASSWORD:-change_me_postgis}
+      POSTGRES_DB: ${POSTGIS_DB:-geospatial}
+    volumes:
+      - postgis-data:/var/lib/postgresql/data
+      - ./infra/postgis/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGIS_HOST_PORT:-5434}:5432"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGIS_USER:-geo_user} -d ${POSTGIS_DB:-geospatial}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+
+  # ──────────────────────────────────────────────────────────
+  # Neo4j — Entity Relationship Graph (fraud ring visualization)
+  # ──────────────────────────────────────────────────────────
+  neo4j:
+    image: neo4j:5-community
+    container_name: platform-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-change_me_neo4j}
+      NEO4JPLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+      NEO4J_dbms_security_procedures_allowlist: "apoc.*"
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 1G
+      NEO4J_dbms_memory_pagecache_size: 512m
+      NEO4J_ACCEPT_LICENSE_AGREEMENT: "yes"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    ports:
+      - "7474:7474"   # Browser UI
+      - "7687:7687"   # Bolt protocol
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -O /dev/null -q --tries=1 http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+
+  # ──────────────────────────────────────────────────────────
+  # Redis — Session Cache, JWT Denylist, Fusion Weight Config
+  # ──────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: platform-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-change_me_redis}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfilename appendonly.aof
+      --save 900 1
+      --save 300 10
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-change_me_redis}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ──────────────────────────────────────────────────────────
+  # OpenSearch — CQRS Search Read Model
+  # Case + Evidence search with faceted filtering
+  # ──────────────────────────────────────────────────────────
+  opensearch:
+    image: opensearchproject/opensearch:2
+    container_name: platform-opensearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true
+      - cluster.name=platform-search
+      - node.name=opensearch-node1
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 45s
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2
+    container_name: platform-opensearch-dashboards
+    restart: unless-stopped
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status > /dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+
+  # ──────────────────────────────────────────────────────────
+  # Kafka — KRaft Mode (no Zookeeper)
+  # 12 partitions per topic → async event bus for all services
+  # ──────────────────────────────────────────────────────────
+  kafka:
+    image: bitnamilegacy/kafka:3.6
+    container_name: platform-kafka
+    restart: unless-stopped
+    environment:
+      # KRaft (no Zookeeper)
+      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+
+      # Listeners
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      # Replication (single broker for local dev)
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_CFG_MIN_INSYNC_REPLICAS: "1"
+
+      # Topic defaults — 12 partitions shows scalability to judges
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_CFG_NUM_PARTITIONS: "12"
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_LOG_RETENTION_HOURS: "168"   # 7 days
+
+      KAFKA_CFG_ENABLE_IDEMPOTENCE: "true"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    volumes:
+      - kafka-data:/bitnami/kafka
+      - ./infra/kafka/provision-topics.sh:/infra/kafka/provision-topics.sh:ro
+    ports:
+      - "9092:9092"     # Internal (service-to-service)
+      - "29092:29092"   # External (host / Kafka UI)
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list 2>/dev/null && echo HEALTHY"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+  # Creates the required 12-partition topics after Kafka accepts requests.
+  # The script is idempotent, so it is safe to run on every compose startup.
+  kafka-init:
+    image: bitnamilegacy/kafka:3.6
+    container_name: platform-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./infra/kafka/provision-topics.sh:/infra/kafka/provision-topics.sh:ro
+    entrypoint: ["/bin/bash", "/infra/kafka/provision-topics.sh"]
+    networks:
+      - platform-net
+    restart: "no"
+
+  # ──────────────────────────────────────────────────────────
+  # MinIO — S3-Compatible Object Storage (evidence uploads)
+  # ──────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: platform-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-change_me_minio}
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+      MINIO_SERVER_URL: "http://localhost:9000" 
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Web console
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── MinIO Init (creates buckets on first run) ─────────────
+  minio-init:
+    image: minio/mc:latest
+    container_name: platform-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-change_me_minio};
+      mc mb --ignore-existing myminio/${MINIO_BUCKET_EVIDENCE:-evidence};
+      mc mb --ignore-existing myminio/${MINIO_BUCKET_REPORTS:-reports};
+      mc mb --ignore-existing myminio/${MINIO_BUCKET_EDGE:-edge-models};
+      mc anonymous set download myminio/${MINIO_BUCKET_EDGE:-edge-models};
+      echo 'MinIO buckets ready.';
+      "
+    networks:
+      - platform-net
+    restart: "no"   # Run once
+
+  # ══════════════════════════════════════════════════════════
+  # ML MODEL STUBS (Kushal)
+  # Internal model APIs consumed by the Inference Orchestrator.
+  # Host ports are exposed for local smoke testing.
+  # ══════════════════════════════════════════════════════════
+
+  ml-scam-nlp:
+    build:
+      context: ./backend/ml-stubs
+    container_name: platform-ml-scam-nlp
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: ml-scam-nlp
+      MODEL_VERSION: stub-v0.1
+      SCAM_NLP_PROVIDER: groq
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_SCAM_NLP_MODEL: llama-3.3-70b-versatile
+      GROQ_TIMEOUT_SECONDS: 45
+    ports:
+      - "8100:8000"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  ml-counterfeit-cv:
+    build:
+      context: ./backend/ml-stubs
+    container_name: platform-ml-counterfeit-cv
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: ml-counterfeit-cv
+      MODEL_VERSION: stub-v0.1
+      COUNTERFEIT_CV_PROVIDER: groq
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # meta-llama/llama-4-scout-17b-16e-instruct was deprecated by Groq;
+      # qwen/qwen3.6-27b is the current supported vision model.
+      GROQ_VISION_MODEL: qwen/qwen3.6-27b
+      GROQ_TIMEOUT_SECONDS: 45
+    ports:
+      - "8101:8000"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  ml-graph-analyzer:
+    build:
+      context: ./backend/ml-stubs
+    container_name: platform-ml-graph-analyzer
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: ml-graph-analyzer
+      MODEL_VERSION: stub-v0.1
+    ports:
+      - "8102:8000"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  ml-audio-analyzer:
+    build:
+      context: ./backend/ml-stubs
+    container_name: platform-ml-audio-analyzer
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: ml-audio-analyzer
+      MODEL_VERSION: stub-v0.1
+      AUDIO_ANALYZER_PROVIDER: groq
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_WHISPER_MODEL: whisper-large-v3
+      # meta-llama/llama-4-scout-17b-16e-instruct was deprecated by Groq;
+      # qwen/qwen3.6-27b is the current supported vision-capable model.
+      GROQ_AUDIO_LLM_MODEL: qwen/qwen3.6-27b
+      GROQ_WHISPER_TIMEOUT_SECONDS: 60
+      GROQ_TIMEOUT_SECONDS: 45
+    ports:
+      - "8103:8000"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ──────────────────────────────────────────────────────────
+  # ClamAV — Malware Scanning (Evidence Service)
+  # ──────────────────────────────────────────────────────────
+  clamav:
+    # clamav/clamav:latest (Alpine-based) has no arm64 build — fails on Apple
+    # Silicon. clamav-debian is the official multi-arch (amd64/arm64/ppc64le)
+    # image, same functionality.
+    image: clamav/clamav-debian:latest
+    container_name: platform-clamav
+    restart: unless-stopped
+    ports:
+      - "3310:3310"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # ──────────────────────────────────────────────────────────
+  # Evidence Service
+  # ──────────────────────────────────────────────────────────
+  evidence-service:
+    build:
+      context: ./backend/evidence
+    container_name: platform-evidence
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      MINIO_ENDPOINT: "http://minio:9000"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change_me_minio}
+      MINIO_BUCKET: ${MINIO_BUCKET_EVIDENCE:-evidence}
+      CLAMAV_HOST: "clamav"
+      CLAMAV_PORT: "3310"
+    ports:
+      - "8006:8000"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      clamav:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ──────────────────────────────────────────────────────────
+  # Event Processing Service & Outbox Publisher
+  # ──────────────────────────────────────────────────────────
+  event-processing:
+    build:
+      context: ./backend/event-processing
+    container_name: platform-event-processing
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      DSN: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+      TELECOM_WEBHOOK_SECRET: "change_me_telecom"
+      BANK_WEBHOOK_SECRET: "change_me_bank"
+      COUNTERFEIT_WEBHOOK_SECRET: "change_me_counterfeit"
+    ports:
+      - "8005:8000"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  outbox-publisher:
+    build:
+      context: ./backend/event-processing
+    container_name: platform-outbox-publisher
+    restart: unless-stopped
+    command: ["python", "outbox_publisher.py"]
+    environment:
+      DSN: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # ──────────────────────────────────────────────────────────
+  # Search Service (T8f) — CQRS Read Model
+  # Two pods: API server + headless Kafka consumer/indexer
+  # ──────────────────────────────────────────────────────────
+  search:
+    build:
+      context: ./backend/search
+    container_name: platform-search
+    restart: unless-stopped
+    environment:
+      OPENSEARCH_URL: "http://opensearch:9200"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+    ports:
+      - "8012:8000"
+    networks:
+      - platform-net
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  search-consumer:
+    build:
+      context: ./backend/search
+    container_name: platform-search-consumer
+    restart: unless-stopped
+    command: ["python", "indexer.py"]
+    environment:
+      OPENSEARCH_URL: "http://opensearch:9200"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "search-indexer"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # ──────────────────────────────────────────────────────────
+  # Audit Service (T7) — Immutable Ledger (NFR-6.1)
+  # Two pods: API server (read-only) + headless Kafka consumer (write-only)
+  # DB: audit.audit_log in primary postgres — append-only via trigger
+  # ──────────────────────────────────────────────────────────
+  audit:
+    build:
+      context: ./backend/audit
+    container_name: platform-audit
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+    ports:
+      - "8007:8000"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ──────────────────────────────────────────────────────────
+  # Inference Orchestrator (T8) — AI Fusion Engine
+  # Single pod: FastAPI API + aiokafka consumer (background asyncio.Task)
+  # Port: 8008 (host) → 8000 (container)
+  # Internal only — NOT routed through Kong.
+  # Callers: Event Processing (sync T15), Case Service (via Kafka consumer)
+  # ──────────────────────────────────────────────────────────
+  inference-orchestrator:
+    build:
+      context: ./backend/inference-orchestrator
+    container_name: platform-inference-orchestrator
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      GRAPH_SERVICE_URL: "http://graph:8000/api/v1"
+      EVIDENCE_SERVICE_URL: "http://evidence:8000"
+      ML_SCAM_NLP_URL: "http://ml-scam-nlp:8000"
+      ML_COUNTERFEIT_URL: "http://ml-counterfeit-cv:8000"
+      ML_GRAPH_URL: "http://ml-graph-analyzer:8000"
+      ML_AUDIO_URL: "http://ml-audio-analyzer:8000"
+      NOTIFICATION_SERVICE_URL: "http://notification:8000"
+      LOG_LEVEL: "INFO"
+    ports:
+      - "8014:8000"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  auth:
+    build:
+      context: ./backend/auth
+    container_name: platform-auth
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  case:
+    build:
+      context: ./backend/case
+    container_name: platform-case
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  bot:
+    build:
+      context: ./backend/bot
+    container_name: platform-bot
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  citizen-bff:
+    build:
+      context: ./backend/citizen-bff
+    container_name: platform-citizen-bff
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+      CASE_SERVICE_URL: "http://case:8000"
+      BOT_SERVICE_URL: "http://bot:8000"
+      EVIDENCE_SERVICE_URL: "http://evidence-service:8000"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  department-bffs:
+    build:
+      context: ./backend/department-bffs
+    container_name: platform-department-bffs
+    restart: unless-stopped
+    environment:
+      NOTIFY_URL: "http://notification:8000/api/v1/notify"
+      REPORTING_URL: "http://reporting-service:8000/api/v1/reports"
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  reporting-service:
+    build:
+      context: ./backend/reporting
+    container_name: platform-reporting
+    restart: unless-stopped
+    ports:
+      - "8013:8000"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://platform_user:change_me_postgres@postgres:5432/platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      MINIO_ENDPOINT: "http://minio:9000"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "change_me_minio"
+      NEO4J_URI: "bolt://neo4j:7687"
+      NEO4J_USER: "neo4j"
+      NEO4J_PASSWORD: "change_me_neo4j"
+      VAULT_ADDR: ""
+      MOCK_RS256_PRIVATE_KEY: ""
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+
+  audit-consumer:
+    build:
+      context: ./backend/audit
+    container_name: platform-audit-consumer
+    restart: unless-stopped
+    command: ["python", "consumer.py"]
+    environment:
+      DATABASE_URL: "postgresql://platform_user:change_me_postgres@postgres:5432/platform"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "audit-consumer"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  investigator-bff:
+    build:
+      context: ./backend/investigator-bff
+    container_name: platform-investigator-bff
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8008:8000"
+    environment:
+      LOG_LEVEL: "INFO"
+      CASE_SERVICE_URL: "http://case:8000"
+      SEARCH_SERVICE_URL: "http://search:8000"
+      GEO_SERVICE_URL: "http://geo:8000"
+      GRAPH_SERVICE_URL: "http://graph:8000"
+      EVIDENCE_SERVICE_URL: "http://evidence-service:8000"
+      REPORTING_SERVICE_URL: "http://reporting-service:8000"
+      NOTIFICATION_SERVICE_URL: "http://notification:8000"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  graph:
+    build:
+      context: ./backend/graph
+    container_name: platform-graph
+    restart: unless-stopped
+    ports:
+      - "8009:8000"
+    environment:
+      NEO4J_URI: "bolt://neo4j:7687"
+      NEO4J_USER: "neo4j"
+      NEO4J_PASSWORD: "change_me_neo4j"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  graph-consumer:
+    build:
+      context: ./backend/graph
+    container_name: platform-graph-consumer
+    restart: unless-stopped
+    command: ["python", "consumer.py"]
+    environment:
+      NEO4J_URI: "bolt://neo4j:7687"
+      NEO4J_USER: "neo4j"
+      NEO4J_PASSWORD: "change_me_neo4j"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "graph-service-consumer"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  geo:
+    build:
+      context: ./backend/geo
+    container_name: platform-geo
+    restart: unless-stopped
+    ports:
+      - "8010:8000"
+    environment:
+      DATABASE_URL: "postgresql://geo_user:change_me_postgis@postgis:5432/geospatial"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "change_me_minio"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      postgis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  geo-consumer:
+    build:
+      context: ./backend/geo
+    container_name: platform-geo-consumer
+    restart: unless-stopped
+    command: ["python", "consumer.py"]
+    environment:
+      DATABASE_URL: "postgresql://geo_user:change_me_postgis@postgis:5432/geospatial"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "geo-service-consumer"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      postgis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+  # T13c -- Mock MHA Government Portal Webhook (port 8099)
+  mha-webhook-mock:
+    build:
+      context: ./backend/mha-webhook-mock
+    container_name: platform-mha-webhook-mock
+    restart: unless-stopped
+    ports:
+      - "8099:8000"
+    networks:
+      - platform-net
+
+  notification:
+    build:
+      context: ./backend/notification
+    container_name: platform-notification
+    restart: unless-stopped
+    ports:
+      - "8011:8000"
+    environment:
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      MHA_WEBHOOK_URL: "http://mha-webhook-mock:8000/alert"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health/ready > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  notification-consumer:
+    build:
+      context: ./backend/notification
+    container_name: platform-notification-consumer
+    restart: unless-stopped
+    command: ["python", "consumer.py"]
+    environment:
+      REDIS_URL: "redis://:change_me_redis@redis:6379/0"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      MHA_WEBHOOK_URL: "http://mha-webhook-mock:8000/alert"
+      LOG_LEVEL: "INFO"
+    networks:
+      - platform-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+
+
+  # ──────────────────────────────────────────────────────────
+  # Kong — API Gateway (DB-less Declarative Mode)
+  # JWT validation, rate limiting, correlation-id on every route
+  # ──────────────────────────────────────────────────────────
+  kong:
+    image: kong:3
+    container_name: platform-kong
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000, 0.0.0.0:8443 ssl"
+      KONG_PLUGINS: "bundled"
+      KONG_VAULT_ENV_REDIS_PASSWORD: ${REDIS_PASSWORD:-change_me_redis}
+    volumes:
+      - ./infra/kong/kong.yml:/etc/kong/kong.yml:ro
+    ports:
+      - "8000:8000"   # HTTP proxy (client → Kong → services)
+      - "8001:8001"   # Admin API
+      - "8443:8443"   # HTTPS proxy
+    networks:
+      - platform-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kong health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ══════════════════════════════════════════════════════════
+  # OBSERVABILITY STACK (Prometheus + Grafana + Loki + Tempo)
+  # Shows metrics, logs, and distributed traces in one place
+  # ══════════════════════════════════════════════════════════
+
+  # ── Prometheus ───────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: platform-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-remote-write-receiver'
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -O /dev/null -q http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Grafana ───────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: platform-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health | grep -q 'ok'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Loki (log aggregation) ────────────────────────────────
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: platform-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./infra/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -O /dev/null -q http://localhost:3100/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Tempo (distributed tracing) ───────────────────────────
+  # Services send OTLP traces directly here (port 4317/4318)
+  tempo:
+    image: grafana/tempo:2.4.0
+    container_name: platform-tempo
+    restart: unless-stopped
+    command: -config.file=/etc/tempo/tempo-config.yml
+    volumes:
+      - ./infra/tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200"   # Tempo HTTP (Grafana data source)
+      - "4317:4317"   # OTLP gRPC — services send traces here
+      - "4318:4318"   # OTLP HTTP — services send traces here
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -O /dev/null -q http://localhost:3200/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s

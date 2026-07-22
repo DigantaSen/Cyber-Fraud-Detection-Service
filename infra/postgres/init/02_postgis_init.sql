@@ -1,0 +1,2 @@
+-- This file is intentionally empty.
+-- PostGIS init scripts are in infra/postgis/init/ and mounted into the postgis container.
